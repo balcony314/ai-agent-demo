@@ -1,0 +1,60 @@
+# https://taskfile.dev
+
+version: '3'
+
+vars:
+  BINARY_NAME: ai-agent
+
+tasks:
+  default:
+    desc: 显示所有可用任务
+    cmds:
+      - task --list
+
+  build:
+    desc: 编译项目
+    cmds:
+      - go build -o {{.BINARY_NAME}} .
+    silent: false
+
+  run:
+    desc: 运行（Mock 模式，无需 API Key）
+    cmds:
+      - go run .
+    silent: false
+
+  run:openai:
+    desc: 运行（需要设置 OPENAI_API_KEY 环境变量）
+    cmds:
+      - go run . -api-key $OPENAI_API_KEY -model gpt-4o
+    silent: false
+
+  run:ollama:
+    desc: 运行（连接本地 Ollama）
+    cmds:
+      - go run . -api-key dummy -base-url http://localhost:11434/v1 -model qwen2
+    silent: false
+
+  test:
+    desc: 运行测试
+    cmds:
+      - go test ./...
+    silent: false
+
+  lint:
+    desc: 代码静态检查
+    cmds:
+      - go vet ./...
+    silent: false
+
+  clean:
+    desc: 清理编译产物
+    cmds:
+      - rm -f {{.BINARY_NAME}}
+    silent: false
+
+  tidy:
+    desc: 整理依赖
+    cmds:
+      - go mod tidy
+    silent: false
