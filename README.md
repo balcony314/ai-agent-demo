@@ -1,175 +1,154 @@
-# 🤖 AI Agent 教学 Demo (Go)
+# AI Agent Demo
 
-一个用 Go 实现的教学级 AI Agent，演示 **ReAct (Reasoning + Acting)** 模式的核心原理。
+用 Go 实现的教学级 AI Agent，演示 **ReAct (Reasoning + Acting)** 模式。
 
-## 架构图
+通过 OpenAI 兼容的 function calling，实现带工具调用的对话式 Agent。零第三方依赖，仅用标准库。
 
-```
-┌──────────────────────────────────────────────────────┐
-│                    用户 (终端)                        │
-│                 "帮我算 sqrt(144)"                   │
-└───────────────────────┬──────────────────────────────┘
-                        │
-                        ▼
-┌──────────────────────────────────────────────────────┐
-│              Agent (ReAct 核心循环)                    │
-│                                                      │
-│  ┌─────────────────────────────────────────────┐     │
-│  │  用户消息 → [system, user] → LLM            │     │
-│  │                     │                        │     │
-│  │            ┌────────┴────────┐               │     │
-│  │            ▼                 ▼               │     │
-│  │      有 tool_calls      没有 tool_calls     │     │
-│  │            │                 │               │     │
-│  │            ▼                 ▼               │     │
-│  │     执行工具 → 结果      直接返回文本        │     │
-│  │     → 加入历史                       ↓       │     │
-│  │     → 继续循环                    最终答案   │     │
-│  └─────────────────────────────────────────────┘     │
-└──────────┬──────────────────────────┬────────────────┘
-           │                          │
-           ▼                          ▼
-┌──────────────────┐    ┌──────────────────────────┐
-│  LLM 客户端       │    │  工具系统                  │
-│                  │    │                          │
-│  • OpenAI API    │    │  • calculator (计算器)    │
-│  • Ollama        │    │  • current_time (时间)    │
-│  • Mock 模式     │    │  • search (搜索)          │
-│                  │    │  • text_transform (文本)  │
-└──────────────────┘    └──────────────────────────┘
-```
-
-## 快速开始
-
-### Mock 模式（无需 API Key）
+## 🚀 快速开始
 
 ```bash
+# Mock 模式（无需 API key，内置模拟响应）
 go run .
-```
 
-### 真实 LLM 模式
+# 使用 OpenAI API
+go run . -api-key sk-your-key -model gpt-4o
 
-```bash
-# OpenAI
-go run . -api-key sk-xxx -model gpt-4o
-
-# Ollama (本地)
+# 使用 Ollama（本地运行）
 go run . -api-key dummy -base-url http://localhost:11434/v1 -model qwen2
 
-# 其他兼容 API
-go run . -api-key xxx -base-url https://api.deepseek.com/v1 -model deepseek-chat
+# 查看版本
+go run . -version
 ```
 
-## 核心概念
+启动后进入交互式 REPL，输入问题即可对话。输入 `quit` 退出。
 
-### 1. 什么是 AI Agent？
+### 交互命令
 
-```
-AI Agent = LLM (大脑) + Tools (工具) + Loop (循环)
-```
+- `skills` — 列出所有可用技能
+- `skill <名称>` — 切换技能（如 `skill coder`）
+- `quit` / `exit` / `q` — 退出程序
 
-- **LLM**: 理解语言、推理、决策
-- **Tools**: 与外部世界交互（计算、搜索、API调用...）
-- **Loop**: 反复思考→行动→观察，直到完成任务
+### 使用 Taskfile 构建
 
-### 2. ReAct 模式
+项目集成了 [Task](https://taskfile.dev/) 作为构建工具，提供标准化命令：
 
-```
-用户: "北京现在几点？"
-
-THINK:  用户问时间，我需要获取当前时间
-  ↓
-ACT:    调用 current_time() → 返回 "14:30:25"
-  ↓
-OBSERVE: 现在是 14:30
-  ↓
-THINK:  信息够了，可以直接回答
-  ↓
-回复:   "现在是 14:30:25"
+```bash
+task build          # 编译到 build/ai-agent
+task run            # Mock 模式运行
+task test           # 运行测试
+task lint           # 静态分析
+task clean          # 清理构建产物
+task docker:build   # 构建 Docker 镜像
+task docker:run     # Docker 容器运行（交互式）
+task --list         # 查看所有可用命令
 ```
 
-### 3. Function Calling
-
-LLM 不直接执行工具，而是返回一个结构化的调用请求：
-
-```json
-{
-  "tool_calls": [{
-    "function": {
-      "name": "calculator",
-      "arguments": "{\"expression\": \"sqrt(144)\"}"
-    }
-  }]
-}
-```
-
-Agent 框架负责执行，然后把结果喂回给 LLM。
-
-## 项目结构
+## 📁 项目结构
 
 ```
 ai-agent-demo/
-├── main.go              # 入口：交互式聊天界面
+├── main.go              # CLI 入口 + 交互式 REPL
 ├── agent/
-│   ├── types.go         # 类型定义：Message, ToolCall, Config
-│   ├── tools.go         # 工具系统：注册表 + 内置工具
-│   ├── llm.go           # LLM 客户端：OpenAI API / Mock
-│   └── agent.go         # Agent 核心：ReAct 循环
-└── README.md            # 本文件
+│   ├── types.go         # 核心类型：Message, ToolCall, ToolDefinition, Config
+│   ├── tools.go         # 工具注册表 + 4 个内置工具
+│   ├── skill.go         # 技能注册表 + 5 个内置技能
+│   ├── llm.go           # LLM 客户端（OpenAI / Mock）
+│   └── agent.go         # ReAct 编排循环 + 技能切换
+├── Taskfile.yml         # Task 构建配置
+├── Dockerfile           # 多阶段 Docker 构建
+└── build/               # 编译输出（gitignore）
 ```
 
-## 交互命令
+## 🏗️ 架构设计
 
-| 命令 | 说明 |
-|------|------|
-| `<任意文本>` | 向 Agent 提问 |
-| `help` | 显示帮助 |
-| `tools` | 列出可用工具 |
-| `history` | 查看对话历史 |
-| `reset` | 重置对话 |
-| `quit` | 退出 |
+```
+用户输入 → [Agent] → LLM 推理 → 工具调用 → 结果回传 → LLM 推理 → ... → 最终回答
+              ↑
+         Skill 系统（角色切换）
+```
 
-## 内置工具
+核心是 **ReAct 循环**：LLM 生成文本或工具调用 → Agent 执行工具 → 把结果喂回 LLM → 循环（最多 10 轮），直到 LLM 输出最终文本回答。
 
-| 工具 | 说明 | 示例 |
-|------|------|------|
-| `calculator` | 数学计算 | `sqrt(144)`, `2 + 3 * 4` |
-| `current_time` | 获取时间 | `Asia/Shanghai` |
-| `search` | 模拟搜索 | `AI Agent` |
-| `text_transform` | 文本处理 | 转大写/小写/反转/长度 |
+### 关键抽象
 
-## 扩展指南
+- **`LLMClient` 接口**（`Chat` 方法）— 可在 `OpenAIClient` 和 `MockClient` 之间切换
+- **`ToolRegistry`** — `map[string]Tool`，提供 `Register`/`Get`/`Definitions`
+- **`SkillRegistry`** — `map[string]Skill`，提供 `Register`/`Get`/`GetNames`/`Definitions`
+- **`Message`** — role + content + 可选的 tool_calls/tool_call_id，对齐 OpenAI chat 格式
 
-### 添加新工具
+## 🔧 内置工具
 
-在 `agent/tools.go` 的 `RegisterBuiltinTools` 中添加：
+| 名称 | 描述 | 示例触发 |
+|------|------|----------|
+| `search` | 模拟搜索引擎 | "帮我搜索 Go 并发编程" |
+| `calculate` | 安全数学表达式计算 | "计算 123 * 456 + 789" |
+| `get_current_time` | 获取当前日期时间 | "现在几点了？" |
+| `string_process` | 文本统计（字数/字符/反转/大小写） | "统计这段文字的字数" |
+
+## 🎭 技能系统
+
+技能（Skill）是预定义的 Agent 角色配置，让同一个 Agent 切换不同"人格"。
+
+| 技能 | 描述 | 切换命令 |
+|------|------|----------|
+| `general` | 通用助手（默认） | `skill general` |
+| `coder` | 代码助手 | `skill coder` |
+| `translator` | 翻译官 | `skill translator` |
+| `analyst` | 数据分析师 | `skill analyst` |
+| `storyteller` | 故事大王 | `skill storyteller` |
+
+## ⚙️ 配置
+
+### CLI 参数
+
+| 参数 | 默认值 | 描述 |
+|------|--------|------|
+| `-api-key` | `""` | API Key（空则使用 Mock 模式） |
+| `-base-url` | `https://api.openai.com/v1` | API 地址 |
+| `-model` | `gpt-4o` | 模型名称 |
+| `-mock` | `false` | 强制使用 Mock 模式 |
+| `-version` | `false` | 显示版本号 |
+
+### 扩展工具
+
+在 `agent/tools.go` 的 `RegisterBuiltinTools()` 中添加新工具：
 
 ```go
 registry.Register(Tool{
     Definition: ToolDefinition{
-        Type: "function",
-        Function: FunctionSchema{
-            Name:        "my_tool",
-            Description: "工具描述（LLM 靠这个决定用不用）",
-            Parameters: json.RawMessage(`{
-                "type": "object",
-                "properties": {
-                    "param1": {"type": "string", "description": "参数说明"}
+        Name:        "my_tool",
+        Description: "工具描述（LLM 根据这个决定何时调用）",
+        Parameters: map[string]interface{}{
+            "type": "object",
+            "properties": map[string]interface{}{
+                "input": map[string]interface{}{
+                    "type":        "string",
+                    "description": "参数说明",
                 },
-                "required": ["param1"]
-            }`),
+            },
+            "required": []string{"input"},
         },
     },
-    Execute: func(args json.RawMessage) (string, error) {
-        var params struct {
-            Param1 string `json:"param1"`
-        }
-        json.Unmarshal(args, &params)
-        return fmt.Sprintf("结果: %s", params.Param1), nil
+    Execute: func(args map[string]interface{}) (string, error) {
+        // 工具逻辑
+        return "结果", nil
     },
 })
 ```
 
-## 零依赖
+### 扩展技能
 
-本项目只使用 Go 标准库，无任何第三方依赖。
+在 `agent/skill.go` 的 `RegisterBuiltinSkills()` 中添加新技能：
+
+```go
+registry.Register(Skill{
+    Name:        "my_skill",
+    Description: "技能描述",
+    SystemPrompt: "你是一个自定义角色...",
+    Tools:       []string{"search", "calculate"}, // 可选：限制可用工具
+})
+```
+
+## 📄 License
+
+MIT
