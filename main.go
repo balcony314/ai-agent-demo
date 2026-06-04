@@ -100,8 +100,10 @@ func main() {
 	a := agent.NewAgent(llm, config)
 
 	fmt.Printf("🛠️  可用工具: %s\n", strings.Join(a.ListTools(), ", "))
+	fmt.Printf("✨ 当前技能: %s\n", a.CurrentSkill())
 	fmt.Println()
 	fmt.Println("💡 输入问题开始对话，输入 'quit' 退出，'reset' 重置对话")
+	fmt.Println("   输入 'skills' 查看可用技能，'skill <名称>' 切换技能")
 	fmt.Println(strings.Repeat("═", 55))
 
 	// ─── 交互式聊天循环 ──────────────────────────────────────────
@@ -119,22 +121,32 @@ func main() {
 		}
 
 		// 特殊命令
-		switch strings.ToLower(input) {
-		case "quit", "exit", "q":
+		cmd := strings.ToLower(input)
+		switch {
+		case cmd == "quit" || cmd == "exit" || cmd == "q":
 			fmt.Println("\n👋 再见！")
 			return
-		case "reset", "clear":
+		case cmd == "reset" || cmd == "clear":
 			a.ClearHistory()
 			fmt.Println("🔄 对话已重置")
 			continue
-		case "history":
+		case cmd == "history":
 			printHistory(a.GetHistory())
 			continue
-		case "tools":
+		case cmd == "tools":
 			fmt.Printf("🛠️  可用工具: %s\n", strings.Join(a.ListTools(), ", "))
 			continue
-		case "help":
+		case cmd == "skills":
+			fmt.Print(a.FormatSkillList())
+			continue
+		case cmd == "help":
 			printHelp()
+			continue
+		case strings.HasPrefix(cmd, "skill "):
+			skillName := strings.TrimSpace(strings.TrimPrefix(input, "skill "))
+			if err := a.SwitchSkill(skillName); err != nil {
+				fmt.Printf("❌ %v\n", err)
+			}
 			continue
 		}
 
@@ -157,7 +169,7 @@ func main() {
 // ─── 界面辅助函数 ──────────────────────────────────────────────
 
 func printBanner() {
-	fmt.Println(`
+	fmt.Print(`
 ╔══════════════════════════════════════════════════════╗
 ║           🤖 AI Agent 教学 Demo (Go)                ║
 ║                                                      ║
@@ -171,13 +183,15 @@ func printBanner() {
 // printHelp 显示帮助信息
 // 列出所有可用的交互命令和示例问题
 func printHelp() {
-	fmt.Println(`
+	fmt.Print(`
 ┌─────────────────────────────────────────────────────┐
 │  📖 可用命令                                         │
 ├─────────────────────────────────────────────────────┤
 │  <任意文本>    向 Agent 提问                         │
 │  help          显示此帮助信息                         │
 │  tools         列出所有可用工具                       │
+│  skills        列出所有可用技能                       │
+│  skill <名称>  切换到指定技能                         │
 │  history       查看完整对话历史                       │
 │  reset         重置对话（清空历史）                    │
 │  quit          退出程序                              │
@@ -189,6 +203,13 @@ func printHelp() {
   • 现在几点了？
   • 搜索一下什么是 AI Agent
   • 把 "hello world" 转大写
+
+🎭 技能说明:
+  • general    - 通用助手（默认）
+  • coder      - 代码助手
+  • translator - 翻译官
+  • analyst    - 数据分析师
+  • storyteller - 故事大王
 `)
 }
 

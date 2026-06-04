@@ -47,10 +47,12 @@ import (
 
 // Agent 是一个 AI 智能体
 type Agent struct {
-	config   Config         // 配置
-	llm      LLMClient     // LLM 客户端
-	registry *ToolRegistry // 工具注册表
-	history  []Message      // 对话历史
+	config       Config          // 配置
+	llm          LLMClient      // LLM 客户端
+	registry     *ToolRegistry  // 工具注册表
+	skillReg     *SkillRegistry // 技能注册表
+	currentSkill string         // 当前激活的技能名称
+	history      []Message      // 对话历史
 }
 
 // NewAgent 创建一个新的 Agent
@@ -59,16 +61,22 @@ func NewAgent(llm LLMClient, config Config) *Agent {
 	registry := NewToolRegistry()
 	RegisterBuiltinTools(registry)
 
+	// 注册内置技能
+	skillReg := NewSkillRegistry()
+	RegisterBuiltinSkills(skillReg)
+
 	// 初始化对话历史（system prompt 是第一条消息）
 	history := []Message{
 		{Role: RoleSystem, Content: config.SystemPrompt},
 	}
 
 	return &Agent{
-		config:   config,
-		llm:      llm,
-		registry: registry,
-		history:  history,
+		config:       config,
+		llm:          llm,
+		registry:     registry,
+		skillReg:     skillReg,
+		currentSkill: "general", // 默认使用通用技能
+		history:      history,
 	}
 }
 
@@ -98,7 +106,8 @@ func (a *Agent) Run(userInput string) (string, error) {
 
 		// 3. 把当前对话历史 + 工具定义发给 LLM
 		//    LLM 会根据历史和工具描述，决定是回复文本还是调用工具
-		tools := a.registry.Definitions()
+		//    根据当前技能过滤可用工具
+		tools := a.getSkillTools()
 		response, err := a.llm.Chat(a.history, tools)
 		if err != nil {
 			return "", fmt.Errorf("LLM 调用失败: %w", err)
@@ -181,9 +190,70 @@ func (a *Agent) ClearHistory() {
 	a.history = a.history[:1]
 }
 
-// ListTools 列出所有可用工具
+// ListTools 列出当前技能可用的工具
 func (a *Agent) ListTools() []string {
-	return a.registry.Names()
+	skill, ok := a.skillReg.Get(a.currentSkill)
+	if !ok || len(skill.Tools) == 0 {
+		return a.registry.Names()
+	}
+	return skill.Tools
+}
+
+// ─── Skill 相关方法 ────────────────────────────────────────────
+
+// SwitchSkill 切换当前技能
+func (a *Agent) SwitchSkill(name string) error {
+	skill, ok := a.skillReg.Get(name)
+	if !ok {
+		return fmt.Errorf("未知技能: %s", name)
+	}
+
+	a.currentSkill = name
+
+	// 更新 system prompt
+	a.history[0] = Message{
+		Role:    RoleSystem,
+		Content: skill.SystemPrompt,
+	}
+
+	// 清空对话历史（保留新的 system prompt）
+	a.ClearHistory()
+
+	fmt.Printf("✨ 已切换到技能: %s (%s)\n", name, skill.Description)
+	return nil
+}
+
+// CurrentSkill 获取当前技能名称
+func (a *Agent) CurrentSkill() string {
+	return a.currentSkill
+}
+
+// ListSkills 列出所有可用技能
+func (a *Agent) ListSkills() []Skill {
+	return a.skillReg.List()
+}
+
+// FormatSkillList 格式化技能列表
+func (a *Agent) FormatSkillList() string {
+	return FormatSkillList(a.skillReg.List(), a.currentSkill)
+}
+
+// getSkillTools 根据当前技能获取可用工具定义
+func (a *Agent) getSkillTools() []ToolDefinition {
+	skill, ok := a.skillReg.Get(a.currentSkill)
+	if !ok || len(skill.Tools) == 0 {
+		// 未指定工具列表 → 使用全部工具
+		return a.registry.Definitions()
+	}
+
+	// 按技能配置过滤工具
+	defs := make([]ToolDefinition, 0, len(skill.Tools))
+	for _, name := range skill.Tools {
+		if tool, found := a.registry.Get(name); found {
+			defs = append(defs, tool.Definition)
+		}
+	}
+	return defs
 }
 
 // TruncStr 截断字符串用于日志显示

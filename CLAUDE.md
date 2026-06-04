@@ -28,8 +28,9 @@ main.go           → 入口：CLI 参数 + 交互式 REPL
 agent/
   types.go        → 核心类型：Message, ToolCall, ToolDefinition, Config, LLMClient 接口
   tools.go        → ToolRegistry（map 实现）+ RegisterBuiltinTools() 注册 4 个内置工具
+  skill.go        → SkillRegistry + RegisterBuiltinSkills() 注册 5 个内置技能
   llm.go          → OpenAIClient（真实 /v1/chat/completions）+ MockClient（演示用）
-  agent.go        → Agent.Run() —— ReAct 编排循环
+  agent.go        → Agent.Run() —— ReAct 编排循环 + Skill 切换
 ```
 
 关键抽象：
@@ -40,6 +41,23 @@ agent/
 ## 添加新工具
 
 在 `agent/tools.go` 的 `RegisterBuiltinTools()` 中注册。提供带 JSON Schema 参数的 `ToolDefinition` 和一个 `Execute` 函数。LLM 根据 description 决定何时调用。
+
+## Skill 系统
+
+Skill 是预定义的 Agent 角色配置，可让同一个 Agent 切换不同"人格"。
+
+内置技能：
+- `general` - 通用助手（默认）
+- `coder` - 代码助手
+- `translator` - 翻译官
+- `analyst` - 数据分析师
+- `storyteller` - 故事大王
+
+交互命令：
+- `skills` - 列出所有可用技能
+- `skill <名称>` - 切换到指定技能
+
+添加新技能：在 `agent/skill.go` 的 `RegisterBuiltinSkills()` 中注册。每个 Skill 包含 Name、Description、SystemPrompt 和可选的 Tools 列表。
 
 ## 代码风格
 
