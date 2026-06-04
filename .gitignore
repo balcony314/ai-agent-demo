@@ -1,0 +1,9 @@
+# 编译产物
+ai-agent
+*.exe
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
