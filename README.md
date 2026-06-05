@@ -38,8 +38,6 @@ task run            # Mock 模式运行
 task test           # 运行测试
 task lint           # 静态分析
 task clean          # 清理构建产物
-task docker:build   # 构建 Docker 镜像
-task docker:run     # Docker 容器运行（交互式）
 task --list         # 查看所有可用命令
 ```
 
@@ -55,7 +53,6 @@ ai-agent-demo/
 │   ├── llm.go           # LLM 客户端（OpenAI / Mock）
 │   └── agent.go         # ReAct 编排循环 + 技能切换
 ├── Taskfile.yml         # Task 构建配置
-├── Dockerfile           # 多阶段 Docker 构建
 └── build/               # 编译输出（gitignore）
 ```
 

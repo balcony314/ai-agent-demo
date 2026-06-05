@@ -61,18 +61,3 @@ tasks:
     desc: 整理依赖
     cmds:
       - go mod tidy
-
-  docker:build:
-    desc: 构建 Docker 镜像
-    deps:
-      - build
-    cmds:
-      - docker build -t ai-agent:latest .
-
-  docker:run:
-    desc: Docker 容器运行（交互式）
-    deps:
-      - docker:build
-    cmds:
-      - cmd: docker run -it --rm ai-agent:latest
-        interactive: true
