@@ -4,27 +4,34 @@
 
 ## 项目概述
 
-用 Go 实现的教学级 AI Agent，演示 **ReAct (Reasoning + Acting)** 模式。通过 OpenAI 兼容的 function calling 实现带工具调用（计算器、时间、搜索、文本处理）的对话式 Agent。零第三方依赖，仅用标准库。
+用 Go 实现的教学级 AI Agent，演示 **ReAct (Reasoning + Acting)** 模式。通过 OpenAI 兼容的 function calling 实现带工具调用（计算器、时间、搜索、文本处理）的对话式 Agent。使用 cobra 管理 CLI 命令。
 
 ## 常用命令
 
 ```bash
-go run .                                          # Mock 模式运行（无需 API key）
-go run . -api-key sk-xxx -model gpt-4o            # 接 OpenAI
-go run . -api-key dummy -base-url http://localhost:11434/v1 -model qwen2  # 接 Ollama
+go run .                                          # 交互式 REPL（Mock 模式）
+go run . --api-key sk-xxx --model gpt-4o          # 接 OpenAI
+go run . --api-key dummy -u http://localhost:11434/v1 -m qwen2  # 接 Ollama
+go run . chat "你好"                              # 单次提问
+go run . skill list                               # 查看技能列表
+go run . version                                  # 版本信息
 go build -o ai-agent .                            # 编译
 go test ./...                                     # 测试（目前无测试文件）
 go vet ./...                                      # 静态检查
 ```
 
-CLI 参数：`-api-key`、`-base-url`、`-model`（默认 `gpt-4o`）、`-mock`
+全局 flags：`--api-key`/`-k`、`--base-url`/`-u`、`--model`/`-m`（默认 `gpt-4o`）、`--mock`
 
 ## 架构
 
 核心是 ReAct 循环：LLM 生成文本或工具调用 → Agent 执行工具 → 把结果喂回 LLM → 循环（最多 10 轮），直到 LLM 输出最终文本回答。
 
 ```
-main.go           → 入口：CLI 参数 + 交互式 REPL
+main.go           → 入口：调用 cmd.Execute()
+cmd/
+  root.go         → Root 命令 + 全局 flags + 交互式 REPL
+  chat.go         → chat 子命令：单次提问（非交互式）
+  version.go      → version 子命令：版本信息
 agent/
   types.go        → 核心类型：Message, ToolCall, ToolDefinition, Config, LLMClient 接口
   tools.go        → ToolRegistry（map 实现）+ RegisterBuiltinTools() 注册 4 个内置工具
