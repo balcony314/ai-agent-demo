@@ -6,62 +6,45 @@
 
 ## 整体架构
 
-```
-┌──────────────────────────────────────────────────────────────┐
-│                        用户 (终端)                           │
-│                     "帮我算一下 sqrt(144)"                    │
-└──────────────────────────┬───────────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│                    cmd/ (CLI 层)                              │
-│                                                              │
-│  root.go ──── 交互式 REPL（默认）                            │
-│  chat.go ──── 单次提问（子命令）                              │
-│  version.go ─ 版本信息                                       │
-│                                                              │
-│  职责：解析参数、创建 LLM 客户端、驱动 Agent                  │
-└──────────────────────────┬───────────────────────────────────┘
-                           │
-                           ▼
-┌──────────────────────────────────────────────────────────────┐
-│                    agent/ (核心层)                            │
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐     │
-│  │  Agent (agent.go)                                   │     │
-│  │                                                     │     │
-│  │  Run(userInput) → ReAct 循环                        │     │
-│  │                                                     │     │
-│  │  ┌───────────────────────────────────────────┐      │     │
-│  │  │  1. 用户消息加入 history                  │      │     │
-│  │  │  2. 发送 history + tools → LLM            │      │     │
-│  │  │  3. LLM 返回 tool_calls?                  │      │     │
-│  │  │     ├─ 是 → 执行工具 → 结果加入 history   │      │     │
-│  │  │     │       → 回到第 2 步                 │      │     │
-│  │  │     └─ 否 → 返回 content 作为最终回答     │      │     │
-│  │  └───────────────────────────────────────────┘      │     │
-│  └─────────────────────────────────────────────────────┘     │
-│              │                    │                          │
-│              ▼                    ▼                          │
-│  ┌──────────────────┐  ┌──────────────────────────┐         │
-│  │  LLMClient       │  │  ToolRegistry            │         │
-│  │  (llm.go)        │  │  (tools.go)              │         │
-│  │                  │  │                          │         │
-│  │  OpenAIClient    │  │  calculator              │         │
-│  │  MockClient      │  │  current_time            │         │
-│  └──────────────────┘  │  search                  │         │
-│                        │  text_transform          │         │
-│                        └──────────────────────────┘         │
-│                                                              │
-│  ┌─────────────────────────────────────────────────────┐     │
-│  │  SkillRegistry (skill.go)                           │     │
-│  │                                                     │     │
-│  │  general / coder / translator / analyst / storyteller│    │
-│  │  每个 Skill = SystemPrompt + 可用工具列表           │     │
-│  └─────────────────────────────────────────────────────┘     │
-│                                                              │
-│  types.go ──── 核心类型：Message, ToolCall, Config 等        │
-└──────────────────────────────────────────────────────────────┘
+```mermaid
+graph TB
+    User["用户 (终端)<br/>帮我算一下 sqrt(144)"] --> CMD
+
+    subgraph CMD["cmd/ (CLI 层)"]
+        direction LR
+        Root["root.go<br/>交互式 REPL（默认）"]
+        Chat["chat.go<br/>单次提问（子命令）"]
+        Version["version.go<br/>版本信息"]
+    end
+
+    CMD --> |"解析参数、创建 LLM 客户端、驱动 Agent"| Agent
+
+    subgraph Agent["agent/ (核心层)"]
+        AgentCore["Agent (agent.go)<br/>Run(userInput) → ReAct 循环"]
+
+        subgraph ReactLoop["ReAct 循环"]
+            direction TB
+            S1["1. 用户消息加入 history"]
+            S2["2. 发送 history + tools → LLM"]
+            S3["3. LLM 返回 tool_calls?"]
+            S4["是 → 执行工具 → 结果加入 history"]
+            S5["否 → 返回 content 作为最终回答"]
+            S1 --> S2 --> S3
+            S3 --> |"是"| S4 --> S2
+            S3 --> |"否"| S5
+        end
+
+        AgentCore --> ReactLoop
+
+        LLM["LLMClient (llm.go)<br/>OpenAIClient / MockClient"]
+        Tools["ToolRegistry (tools.go)<br/>calculator / current_time<br/>search / text_transform"]
+        Skills["SkillRegistry (skill.go)<br/>general / coder / translator<br/>analyst / storyteller<br/>每个 Skill = SystemPrompt + 可用工具列表"]
+        Types["types.go<br/>核心类型：Message, ToolCall, Config 等"]
+
+        AgentCore --> LLM
+        AgentCore --> Tools
+        AgentCore --> Skills
+    end
 ```
 
 ## 核心概念
@@ -70,24 +53,21 @@
 
 ReAct = **Re**asoning + **Act**ing，是让 LLM 从"只能说"变成"能做"的关键范式。
 
-```
-用户: "北京现在几点？10分钟前呢？"
+```mermaid
+sequenceDiagram
+    participant U as 用户
+    participant A as Agent
+    participant L as LLM
+    participant T as current_time
 
-┌─── ReAct Loop ───────────────────────────────────┐
-│                                                   │
-│  THINK: 用户问时间，需要先获取当前时间             │
-│    → 决定调用 current_time 工具                   │
-│                                                   │
-│  ACT: 调用 current_time({timezone: "Asia/Shanghai"})│
-│    → 返回 "2024-01-15 14:30:25"                   │
-│                                                   │
-│  OBSERVE: 当前是 14:30，10分钟前是 14:20          │
-│                                                   │
-│  THINK: 信息足够，生成最终回复                     │
-│                                                   │
-└───────────────────────────────────────────────────┘
-
-Agent: "现在是 14:30，10分钟前是 14:20"
+    U->>A: "北京现在几点？10分钟前呢？"
+    A->>L: THINK: 用户问时间，需要先获取当前时间
+    L-->>A: 决定调用 current_time 工具
+    A->>T: ACT: current_time({timezone: "Asia/Shanghai"})
+    T-->>A: 返回 "2024-01-15 14:30:25"
+    A->>L: OBSERVE: 当前是 14:30，10分钟前是 14:20
+    L-->>A: THINK: 信息足够，生成最终回复
+    A-->>U: "现在是 14:30，10分钟前是 14:20"
 ```
 
 关键洞察：LLM 不直接输出答案，而是输出 **"我想要做什么"**（tool_calls），Agent 框架执行后把结果喂回去，LLM 再决定下一步。
@@ -194,33 +174,22 @@ Agent 是整个系统的中枢，组合了：
 
 一次完整的 Agent 调用：
 
-```
-用户输入 "帮我算 sqrt(144)"
-    │
-    ▼
-Agent.Run() 加入 history
-    │
-    ▼
-LLM.Chat(history, tools)
-    │
-    ├─ LLM 返回 tool_calls: [{name: "calculator", args: {"expression": "sqrt(144)"}}]
-    │
-    ▼
-Agent.executeTool("calculator", args)
-    │
-    ▼
-Tool.Execute(args) → "计算结果: sqrt(144) = 12"
-    │
-    ▼
-结果作为 RoleTool 消息加入 history
-    │
-    ▼
-LLM.Chat(history, tools)  ← 第二轮
-    │
-    ├─ LLM 返回 content: "sqrt(144) 的结果是 12"
-    │
-    ▼
-返回最终回答
+```mermaid
+flowchart TD
+    A["用户输入: 帮我算 sqrt(144)"] --> B["Agent.Run() 加入 history"]
+    B --> C["LLM.Chat(history, tools)"]
+    C --> D["LLM 返回 tool_calls:<br/>{name: calculator, args: {expression: sqrt(144)}}"]
+    D --> E["Agent.executeTool(calculator, args)"]
+    E --> F["Tool.Execute(args) → 计算结果: sqrt(144) = 12"]
+    F --> G["结果作为 RoleTool 消息加入 history"]
+    G --> H["LLM.Chat(history, tools) 第二轮"]
+    H --> I["LLM 返回 content:<br/>sqrt(144) 的结果是 12"]
+    I --> J["返回最终回答"]
+
+    style A fill:#e1f5e1
+    style J fill:#ffe1e1
+    style C fill:#e1e5ff
+    style H fill:#e1e5ff
 ```
 
 ## 设计决策

@@ -34,21 +34,24 @@
 
 ### 2.3 系统架构
 
-```
-┌─────────────────────────────────────────┐
-│              用户接口层                   │
-│         cmd/ (CLI 命令)                  │
-└─────────────────┬───────────────────────┘
-                  │
-┌─────────────────▼───────────────────────┐
-│              核心编排层                   │
-│         agent/ (Agent 逻辑)             │
-└─────────────────┬───────────────────────┘
-                  │
-┌─────────────────▼───────────────────────┐
-│              基础设施层                   │
-│    LLMClient / ToolRegistry / Skills    │
-└─────────────────────────────────────────┘
+```mermaid
+graph TB
+    subgraph UI["用户接口层"]
+        CMD["cmd/ (CLI 命令)"]
+    end
+
+    subgraph Core["核心编排层"]
+        Agent["agent/ (Agent 逻辑)"]
+    end
+
+    subgraph Infra["基础设施层"]
+        LLM["LLMClient"]
+        Tools["ToolRegistry"]
+        Skills["Skills"]
+    end
+
+    UI --> Core
+    Core --> Infra
 ```
 
 ## 3. 功能需求
@@ -204,32 +207,40 @@ type Message struct {
 
 ### 6.1 对话历史
 
-```
-[]Message
-├── {Role: "system", Content: "系统提示"}
-├── {Role: "user", Content: "用户问题"}
-├── {Role: "assistant", ToolCalls: [...]}
-├── {Role: "tool", Content: "工具结果", ToolCallID: "xxx"}
-└── {Role: "assistant", Content: "最终回答"}
+```mermaid
+graph LR
+    subgraph History["[]Message"]
+        M1["Role: system<br/>Content: 系统提示"]
+        M2["Role: user<br/>Content: 用户问题"]
+        M3["Role: assistant<br/>ToolCalls: [...]"]
+        M4["Role: tool<br/>Content: 工具结果<br/>ToolCallID: xxx"]
+        M5["Role: assistant<br/>Content: 最终回答"]
+    end
+
+    M1 --> M2 --> M3 --> M4 --> M5
 ```
 
 ### 6.2 工具注册表
 
-```
-map[string]Tool
-├── "calculator" → Tool{...}
-├── "current_time" → Tool{...}
-├── "search" → Tool{...}
-└── "text_transform" → Tool{...}
+```mermaid
+graph LR
+    subgraph Registry["map[string]Tool"]
+        T1["calculator"] --> Tool1["Tool{...}"]
+        T2["current_time"] --> Tool2["Tool{...}"]
+        T3["search"] --> Tool3["Tool{...}"]
+        T4["text_transform"] --> Tool4["Tool{...}"]
+    end
 ```
 
 ### 6.3 技能注册表
 
-```
-map[string]Skill
-├── "general" → Skill{Name, Description, SystemPrompt, Tools}
-├── "coder" → Skill{...}
-└── ...
+```mermaid
+graph LR
+    subgraph Registry["map[string]Skill"]
+        S1["general"] --> Skill1["Skill{Name, Description,<br/>SystemPrompt, Tools}"]
+        S2["coder"] --> Skill2["Skill{...}"]
+        S3["..."] --> Skill3["..."]
+    end
 ```
 
 ## 7. 约束条件
@@ -264,12 +275,15 @@ map[string]Skill
 
 ### 8.2 错误传播
 
-```
-Tool.Execute() error
-    ↓
-Agent.executeTool() → 包装为 RoleTool 消息
-    ↓
-LLM 看到错误信息 → 生成友好回复
+```mermaid
+flowchart TD
+    A["Tool.Execute() error"] --> B["Agent.executeTool()"]
+    B --> C["包装为 RoleTool 消息"]
+    C --> D["LLM 看到错误信息"]
+    D --> E["生成友好回复"]
+
+    style A fill:#ffe1e1
+    style E fill:#e1f5e1
 ```
 
 ## 9. 测试策略
