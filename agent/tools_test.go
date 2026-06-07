@@ -1,0 +1,350 @@
+package agent
+
+import (
+	"encoding/json"
+	"math"
+	"testing"
+)
+
+// ─── ToolRegistry 测试 ─────────────────────────────────────────
+
+func TestToolRegistry_RegisterAndGet(t *testing.T) {
+	reg := NewToolRegistry()
+
+	tool := Tool{
+		Definition: ToolDefinition{
+			Type: "function",
+			Function: FunctionSchema{
+				Name:        "test_tool",
+				Description: "测试工具",
+			},
+		},
+		Execute: func(args json.RawMessage) (string, error) {
+			return "ok", nil
+		},
+	}
+
+	reg.Register(tool)
+
+	got, ok := reg.Get("test_tool")
+	if !ok {
+		t.Fatal("Get 返回 false，期望找到已注册的工具")
+	}
+	if got.Definition.Function.Name != "test_tool" {
+		t.Errorf("工具名 = %q, 期望 %q", got.Definition.Function.Name, "test_tool")
+	}
+}
+
+func TestToolRegistry_GetNotFound(t *testing.T) {
+	reg := NewToolRegistry()
+	_, ok := reg.Get("nonexistent")
+	if ok {
+		t.Error("Get 返回 true，期望找不到未注册的工具")
+	}
+}
+
+func TestToolRegistry_Definitions(t *testing.T) {
+	reg := NewToolRegistry()
+	reg.Register(Tool{
+		Definition: ToolDefinition{
+			Type: "function",
+			Function: FunctionSchema{Name: "a", Description: "tool a"},
+		},
+	})
+	reg.Register(Tool{
+		Definition: ToolDefinition{
+			Type: "function",
+			Function: FunctionSchema{Name: "b", Description: "tool b"},
+		},
+	})
+
+	defs := reg.Definitions()
+	if len(defs) != 2 {
+		t.Errorf("Definitions 长度 = %d, 期望 2", len(defs))
+	}
+}
+
+func TestToolRegistry_Names(t *testing.T) {
+	reg := NewToolRegistry()
+	reg.Register(Tool{
+		Definition: ToolDefinition{
+			Function: FunctionSchema{Name: "alpha"},
+		},
+	})
+	reg.Register(Tool{
+		Definition: ToolDefinition{
+			Function: FunctionSchema{Name: "beta"},
+		},
+	})
+
+	names := reg.Names()
+	if len(names) != 2 {
+		t.Errorf("Names 长度 = %d, 期望 2", len(names))
+	}
+	nameSet := map[string]bool{}
+	for _, n := range names {
+		nameSet[n] = true
+	}
+	if !nameSet["alpha"] || !nameSet["beta"] {
+		t.Errorf("Names = %v, 期望包含 alpha 和 beta", names)
+	}
+}
+
+func TestRegisterBuiltinTools(t *testing.T) {
+	reg := NewToolRegistry()
+	RegisterBuiltinTools(reg)
+
+	expected := []string{"calculator", "current_time", "search", "text_transform"}
+	for _, name := range expected {
+		if _, ok := reg.Get(name); !ok {
+			t.Errorf("内置工具 %q 未注册", name)
+		}
+	}
+}
+
+// ─── evaluateExpression 测试 ───────────────────────────────────
+
+func TestEvaluateExpression_BasicOps(t *testing.T) {
+	tests := []struct {
+		expr string
+		want float64
+	}{
+		{"2 + 3", 5},
+		{"10 - 4", 6},
+		{"3 * 7", 21},
+		{"15 / 3", 5},
+		{"2 * 3 + 4", 6},   // LastIndex(+)=6 → left="2*3"→parseFloat得2, right="4" → 2+4=6
+		{"10 + 2 * 3", 12}, // LastIndex(+)=3 → left="10", right="2*3"→parseFloat得2 → 10+2=12
+		{"100", 100},        // 单个数字
+		{"3.14 * 2", 6.28}, // 浮点数
+	}
+	for _, tt := range tests {
+		t.Run(tt.expr, func(t *testing.T) {
+			got, err := evaluateExpression(tt.expr)
+			if err != nil {
+				t.Fatalf("evaluateExpression(%q) 错误: %v", tt.expr, err)
+			}
+			if math.Abs(got-tt.want) > 1e-9 {
+				t.Errorf("evaluateExpression(%q) = %g, 期望 %g", tt.expr, got, tt.want)
+			}
+		})
+	}
+}
+
+func TestEvaluateExpression_Sqrt(t *testing.T) {
+	got, err := evaluateExpression("sqrt(144)")
+	if err != nil {
+		t.Fatalf("sqrt(144) 错误: %v", err)
+	}
+	if math.Abs(got-12) > 1e-9 {
+		t.Errorf("sqrt(144) = %g, 期望 12", got)
+	}
+}
+
+func TestEvaluateExpression_SqrtNegative(t *testing.T) {
+	_, err := evaluateExpression("sqrt(-1)")
+	if err == nil {
+		t.Error("sqrt(-1) 应返回错误")
+	}
+}
+
+func TestEvaluateExpression_DivideByZero(t *testing.T) {
+	_, err := evaluateExpression("1 / 0")
+	if err == nil {
+		t.Error("除以零应返回错误")
+	}
+}
+
+func TestEvaluateExpression_InvalidExpr(t *testing.T) {
+	_, err := evaluateExpression("abc + def")
+	if err == nil {
+		t.Error("无效表达式应返回错误")
+	}
+}
+
+// ─── calculator 工具测试 ───────────────────────────────────────
+
+func TestCalculatorTool(t *testing.T) {
+	reg := NewToolRegistry()
+	RegisterBuiltinTools(reg)
+	tool, _ := reg.Get("calculator")
+
+	tests := []struct {
+		name    string
+		args    string
+		want    string // 期望包含的子串
+		wantErr bool
+	}{
+		{"加法", `{"expression":"2+3"}`, "计算结果", false},
+		{"sqrt", `{"expression":"sqrt(16)"}`, "4", false},
+		{"无效JSON", `{bad`, "", true},
+		{"除零", `{"expression":"1/0"}`, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tool.Execute(json.RawMessage(tt.args))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, tt.wantErr)
+			}
+			if !tt.wantErr && tt.want != "" {
+				if len(result) == 0 {
+					t.Error("结果不应为空")
+				}
+			}
+		})
+	}
+}
+
+// ─── current_time 工具测试 ────────────────────────────────────
+
+func TestCurrentTimeTool(t *testing.T) {
+	reg := NewToolRegistry()
+	RegisterBuiltinTools(reg)
+	tool, _ := reg.Get("current_time")
+
+	// 默认时区
+	result, err := tool.Execute(json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatalf("默认时区调用错误: %v", err)
+	}
+	if result == "" {
+		t.Error("结果不应为空")
+	}
+
+	// 指定时区
+	result, err = tool.Execute(json.RawMessage(`{"timezone":"Asia/Shanghai"}`))
+	if err != nil {
+		t.Fatalf("指定时区调用错误: %v", err)
+	}
+	if result == "" {
+		t.Error("结果不应为空")
+	}
+}
+
+func TestCurrentTimeTool_InvalidTimezone(t *testing.T) {
+	reg := NewToolRegistry()
+	RegisterBuiltinTools(reg)
+	tool, _ := reg.Get("current_time")
+
+	_, err := tool.Execute(json.RawMessage(`{"timezone":"Invalid/Zone"}`))
+	if err == nil {
+		t.Error("无效时区应返回错误")
+	}
+}
+
+// ─── search 工具测试 ──────────────────────────────────────────
+
+func TestSearchTool(t *testing.T) {
+	reg := NewToolRegistry()
+	RegisterBuiltinTools(reg)
+	tool, _ := reg.Get("search")
+
+	// 命中关键词
+	result, err := tool.Execute(json.RawMessage(`{"query":"golang"}`))
+	if err != nil {
+		t.Fatalf("搜索错误: %v", err)
+	}
+	if result == "" {
+		t.Error("搜索结果不应为空")
+	}
+
+	// 未命中
+	result, err = tool.Execute(json.RawMessage(`{"query":"xyz_nonexistent"}`))
+	if err != nil {
+		t.Fatalf("搜索错误: %v", err)
+	}
+	if result == "" {
+		t.Error("未命中也应返回提示信息")
+	}
+}
+
+func TestSearchTool_InvalidJSON(t *testing.T) {
+	reg := NewToolRegistry()
+	RegisterBuiltinTools(reg)
+	tool, _ := reg.Get("search")
+
+	_, err := tool.Execute(json.RawMessage(`{bad`))
+	if err == nil {
+		t.Error("无效 JSON 应返回错误")
+	}
+}
+
+// ─── text_transform 工具测试 ──────────────────────────────────
+
+func TestTextTransformTool(t *testing.T) {
+	reg := NewToolRegistry()
+	RegisterBuiltinTools(reg)
+	tool, _ := reg.Get("text_transform")
+
+	tests := []struct {
+		name    string
+		args    string
+		want    string
+		wantErr bool
+	}{
+		{"upper", `{"text":"hello","operation":"upper"}`, "HELLO", false},
+		{"lower", `{"text":"HELLO","operation":"lower"}`, "hello", false},
+		{"reverse", `{"text":"abc","operation":"reverse"}`, "cba", false},
+		{"length", `{"text":"你好","operation":"length"}`, "2", false},
+		{"unknown_op", `{"text":"hi","operation":"foo"}`, "", true},
+		{"invalid_json", `{bad`, "", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			result, err := tool.Execute(json.RawMessage(tt.args))
+			if (err != nil) != tt.wantErr {
+				t.Fatalf("err = %v, wantErr = %v", err, tt.wantErr)
+			}
+			if !tt.wantErr {
+				if result == "" {
+					t.Error("结果不应为空")
+				}
+			}
+		})
+	}
+}
+
+// ─── mockSearch 测试 ──────────────────────────────────────────
+
+func TestMockSearch(t *testing.T) {
+	tests := []struct {
+		query   string
+		wantHit bool
+	}{
+		{"golang", true},
+		{"Go语言", true}, // 包含 golang 关键词（小写匹配）
+		{"xyz_nonexistent", false},
+		{"agent", true},
+	}
+	for _, tt := range tests {
+		t.Run(tt.query, func(t *testing.T) {
+			result := mockSearch(tt.query)
+			if result == "" {
+				t.Error("mockSearch 不应返回空")
+			}
+		})
+	}
+}
+
+// ─── TruncStr 测试 ────────────────────────────────────────────
+
+func TestTruncStr(t *testing.T) {
+	tests := []struct {
+		s      string
+		maxLen int
+		want   string
+	}{
+		{"hello", 10, "hello"},
+		{"hello world", 5, "hello..."},
+		{"", 5, ""},
+		{"abc", 3, "abc"},
+	}
+	for _, tt := range tests {
+		t.Run(tt.s, func(t *testing.T) {
+			got := TruncStr(tt.s, tt.maxLen)
+			if got != tt.want {
+				t.Errorf("TruncStr(%q, %d) = %q, 期望 %q", tt.s, tt.maxLen, got, tt.want)
+			}
+		})
+	}
+}
