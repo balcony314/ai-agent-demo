@@ -71,27 +71,42 @@ ai-agent-demo/
 
 ```
 用户输入 → [Agent] → LLM 推理 → 工具调用 → 结果回传 → LLM 推理 → ... → 最终回答
-              ↑
-         Skill 系统（角色切换）
+              ↑                                               ↑
+         Skill 系统（角色切换）                        Plan 系统（任务规划）
 ```
 
 核心是 **ReAct 循环**：LLM 生成文本或工具调用 → Agent 执行工具 → 把结果喂回 LLM → 循环（最多 10 轮），直到 LLM 输出最终文本回答。
+
+### ReAct + Plan 机制
+
+对于复杂任务，Agent 支持 **Plan 机制**：
+
+1. LLM 判断任务复杂度，决定是否需要创建计划
+2. 使用 `create_plan` 工具生成执行步骤
+3. 按步骤逐一执行，完成后给出最终总结
+
+```
+简单任务: 用户输入 → ReAct 循环 → 回答
+复杂任务: 用户输入 → 创建计划 → 按步骤执行 → 总结回答
+```
 
 ### 关键抽象
 
 - **`LLMClient` 接口**（`Chat` 方法）— 可在 `OpenAIClient` 和 `MockClient` 之间切换
 - **`ToolRegistry`** — `map[string]Tool`，提供 `Register`/`Get`/`Definitions`
-- **`SkillRegistry`** — `map[string]Skill`，提供 `Register`/`Get`/`GetNames`/`Definitions`
+- **`SkillRegistry`** — `map[string]Skill`，提供 `Register`/`Get`/`List`
 - **`Message`** — role + content + 可选的 tool_calls/tool_call_id，对齐 OpenAI chat 格式
+- **`Plan`/`Step`** — 执行计划和步骤定义
 
 ## 🔧 内置工具
 
 | 名称 | 描述 | 示例触发 |
 |------|------|----------|
 | `search` | 模拟搜索引擎 | "帮我搜索 Go 并发编程" |
-| `calculate` | 安全数学表达式计算 | "计算 123 * 456 + 789" |
-| `get_current_time` | 获取当前日期时间 | "现在几点了？" |
-| `string_process` | 文本统计（字数/字符/反转/大小写） | "统计这段文字的字数" |
+| `calculator` | 安全数学表达式计算 | "计算 123 * 456 + 789" |
+| `current_time` | 获取当前日期时间 | "现在几点了？" |
+| `text_transform` | 文本处理（大小写/反转/长度） | "把 hello 转大写" |
+| `create_plan` | 为复杂任务创建执行计划 | "帮我分析 Go 和 Python 的区别" |
 
 ## 🎭 技能系统
 
@@ -169,7 +184,10 @@ go test ./... -coverprofile=coverage.out
 # 查看覆盖率详情
 go tool cover -func=coverage.out
 
-# 当前覆盖率：73.3%
+# 生成 HTML 覆盖率报告
+go tool cover -html=coverage.out -o coverage.html
+
+# 当前覆盖率：79.3%（agent 包 88.4%）
 ```
 
 ## 📄 License
