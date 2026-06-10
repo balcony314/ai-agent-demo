@@ -53,6 +53,8 @@ type Agent struct {
 	skillReg     *SkillRegistry // 技能注册表
 	currentSkill string         // 当前激活的技能名称
 	history      []Message      // 对话历史
+	currentPlan  *Plan          // 当前执行的计划
+	planStep     int            // 当前执行到的步骤索引
 }
 
 // NewAgent 创建一个新的 Agent
@@ -70,7 +72,7 @@ func NewAgent(llm LLMClient, config Config) *Agent {
 		{Role: RoleSystem, Content: config.SystemPrompt},
 	}
 
-	return &Agent{
+	agent := &Agent{
 		config:       config,
 		llm:          llm,
 		registry:     registry,
@@ -78,6 +80,11 @@ func NewAgent(llm LLMClient, config Config) *Agent {
 		currentSkill: "general", // 默认使用通用技能
 		history:      history,
 	}
+
+	// 注册计划工具（需要 Agent 引用，所以在这里注册）
+	agent.registerPlanTool()
+
+	return agent
 }
 
 // ─── 核心：ReAct 循环 ──────────────────────────────────────────
@@ -168,14 +175,97 @@ func (a *Agent) executeTool(name, argsJSON string) (string, error) {
 	if !ok {
 		return "", fmt.Errorf("未知工具: %s", name)
 	}
+	return tool.Execute(json.RawMessage(argsJSON))
+}
 
-	var args json.RawMessage = []byte(argsJSON)
-	result, err := tool.Execute(args)
-	if err != nil {
-		return "", err
+// ─── 计划相关方法 ────────────────────────────────────────────────
+
+// registerPlanTool 注册计划工具（闭包捕获 Agent 引用）
+func (a *Agent) registerPlanTool() {
+	a.registry.Register(Tool{
+		Definition: ToolDefinition{
+			Type: "function",
+			Function: FunctionSchema{
+				Name:        "create_plan",
+				Description: "为复杂任务创建执行计划。当任务需要多步骤完成时使用此工具。",
+				Parameters: json.RawMessage(`{
+					"type": "object",
+					"properties": {
+						"goal": {
+							"type": "string",
+							"description": "任务目标"
+						},
+						"steps": {
+							"type": "array",
+							"items": {
+								"type": "object",
+								"properties": {
+									"description": {
+										"type": "string",
+										"description": "步骤描述"
+									}
+								},
+								"required": ["description"]
+							},
+							"description": "执行步骤列表"
+						}
+					},
+					"required": ["goal", "steps"]
+				}`),
+			},
+		},
+		Execute: func(args json.RawMessage) (string, error) {
+			var plan Plan
+			if err := json.Unmarshal(args, &plan); err != nil {
+				return "", fmt.Errorf("计划解析失败: %w", err)
+			}
+
+			// 设置当前计划
+			a.setPlan(plan)
+
+			// 格式化计划预览
+			var sb strings.Builder
+			sb.WriteString(fmt.Sprintf("📋 计划已创建: %s\n\n", plan.Goal))
+			for i, step := range plan.Steps {
+				sb.WriteString(fmt.Sprintf("  %d. %s\n", i+1, step.Description))
+			}
+			sb.WriteString("\n请开始执行第 1 步。")
+
+			return sb.String(), nil
+		},
+	})
+}
+
+// setPlan 设置当前计划
+func (a *Agent) setPlan(plan Plan) {
+	// 为每个步骤设置初始状态和 ID
+	for i := range plan.Steps {
+		plan.Steps[i].ID = i + 1
+		plan.Steps[i].Status = "pending"
 	}
+	a.currentPlan = &plan
+	a.planStep = 0
+}
 
-	return result, nil
+// nextPlanStep 获取下一个待执行的步骤
+func (a *Agent) nextPlanStep() *Step {
+	if a.currentPlan == nil || a.planStep >= len(a.currentPlan.Steps) {
+		return nil
+	}
+	step := &a.currentPlan.Steps[a.planStep]
+	a.planStep++
+	return step
+}
+
+// clearPlan 清除当前计划
+func (a *Agent) clearPlan() {
+	a.currentPlan = nil
+	a.planStep = 0
+}
+
+// getCurrentPlan 获取当前计划（用于日志显示）
+func (a *Agent) getCurrentPlan() *Plan {
+	return a.currentPlan
 }
 
 // ─── 辅助函数 ──────────────────────────────────────────────────

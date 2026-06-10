@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
 	"strings"
 	"testing"
@@ -314,10 +315,10 @@ func TestAgentGetSkillTools_AllTools(t *testing.T) {
 	client := &scriptedClient{}
 	agent := NewAgent(client, DefaultConfig())
 
-	// general 技能：使用全部工具
+	// general 技能：使用全部工具（calculator, current_time, search, text_transform, create_plan）
 	defs := agent.getSkillTools()
-	if len(defs) != 4 {
-		t.Errorf("general 技能工具数 = %d, 期望 4", len(defs))
+	if len(defs) != 5 {
+		t.Errorf("general 技能工具数 = %d, 期望 5", len(defs))
 	}
 }
 
@@ -370,9 +371,17 @@ func TestAgentListTools(t *testing.T) {
 	client := &scriptedClient{}
 	agent := NewAgent(client, DefaultConfig())
 
+	// general 技能：Tools 为空，返回全部工具
 	tools := agent.ListTools()
 	if len(tools) == 0 {
 		t.Error("ListTools 不应返回空")
+	}
+
+	// 切换到 coder 技能：返回指定工具
+	agent.SwitchSkill("coder")
+	tools = agent.ListTools()
+	if len(tools) != 2 {
+		t.Errorf("coder 技能工具数 = %d, 期望 2", len(tools))
 	}
 }
 
@@ -546,5 +555,228 @@ func TestDefaultConfig(t *testing.T) {
 	}
 	if config.SystemPrompt == "" {
 		t.Error("SystemPrompt 不应为空")
+	}
+}
+
+// ─── 计划功能测试 ──────────────────────────────────────────────
+
+func TestSetPlan(t *testing.T) {
+	client := &scriptedClient{}
+	agent := NewAgent(client, DefaultConfig())
+
+	plan := Plan{
+		Goal: "测试目标",
+		Steps: []Step{
+			{Description: "步骤一"},
+			{Description: "步骤二"},
+			{Description: "步骤三"},
+		},
+	}
+
+	agent.setPlan(plan)
+
+	if agent.currentPlan == nil {
+		t.Fatal("setPlan 后 currentPlan 不应为 nil")
+	}
+	if agent.currentPlan.Goal != "测试目标" {
+		t.Errorf("Goal = %q, 期望 %q", agent.currentPlan.Goal, "测试目标")
+	}
+	if len(agent.currentPlan.Steps) != 3 {
+		t.Errorf("Steps 长度 = %d, 期望 3", len(agent.currentPlan.Steps))
+	}
+	// 验证 ID 和 Status 被正确设置
+	for i, step := range agent.currentPlan.Steps {
+		if step.ID != i+1 {
+			t.Errorf("Step[%d].ID = %d, 期望 %d", i, step.ID, i+1)
+		}
+		if step.Status != "pending" {
+			t.Errorf("Step[%d].Status = %q, 期望 %q", i, step.Status, "pending")
+		}
+	}
+}
+
+func TestNextPlanStep(t *testing.T) {
+	client := &scriptedClient{}
+	agent := NewAgent(client, DefaultConfig())
+
+	// 没有计划时返回 nil
+	if step := agent.nextPlanStep(); step != nil {
+		t.Error("没有计划时 nextPlanStep 应返回 nil")
+	}
+
+	// 设置计划
+	plan := Plan{
+		Goal: "测试",
+		Steps: []Step{
+			{Description: "步骤一"},
+			{Description: "步骤二"},
+		},
+	}
+	agent.setPlan(plan)
+
+	// 获取第一个步骤
+	step1 := agent.nextPlanStep()
+	if step1 == nil {
+		t.Fatal("第一个步骤不应为 nil")
+	}
+	if step1.Description != "步骤一" {
+		t.Errorf("步骤一描述 = %q, 期望 %q", step1.Description, "步骤一")
+	}
+
+	// 获取第二个步骤
+	step2 := agent.nextPlanStep()
+	if step2 == nil {
+		t.Fatal("第二个步骤不应为 nil")
+	}
+	if step2.Description != "步骤二" {
+		t.Errorf("步骤二描述 = %q, 期望 %q", step2.Description, "步骤二")
+	}
+
+	// 已经没有更多步骤
+	step3 := agent.nextPlanStep()
+	if step3 != nil {
+		t.Error("超出步骤数时应返回 nil")
+	}
+}
+
+func TestClearPlan(t *testing.T) {
+	client := &scriptedClient{}
+	agent := NewAgent(client, DefaultConfig())
+
+	// 设置计划
+	plan := Plan{
+		Goal: "测试",
+		Steps: []Step{
+			{Description: "步骤一"},
+		},
+	}
+	agent.setPlan(plan)
+
+	if agent.currentPlan == nil {
+		t.Fatal("setPlan 后 currentPlan 不应为 nil")
+	}
+
+	// 清除计划
+	agent.clearPlan()
+
+	if agent.currentPlan != nil {
+		t.Error("clearPlan 后 currentPlan 应为 nil")
+	}
+	if agent.planStep != 0 {
+		t.Errorf("clearPlan 后 planStep = %d, 期望 0", agent.planStep)
+	}
+}
+
+func TestGetCurrentPlan(t *testing.T) {
+	client := &scriptedClient{}
+	agent := NewAgent(client, DefaultConfig())
+
+	// 初始时没有计划
+	if plan := agent.getCurrentPlan(); plan != nil {
+		t.Error("初始时 getCurrentPlan 应返回 nil")
+	}
+
+	// 设置计划后
+	plan := Plan{
+		Goal: "测试目标",
+		Steps: []Step{
+			{Description: "步骤一"},
+		},
+	}
+	agent.setPlan(plan)
+
+	current := agent.getCurrentPlan()
+	if current == nil {
+		t.Fatal("设置计划后 getCurrentPlan 不应为 nil")
+	}
+	if current.Goal != "测试目标" {
+		t.Errorf("Goal = %q, 期望 %q", current.Goal, "测试目标")
+	}
+}
+
+func TestCreatePlanTool(t *testing.T) {
+	client := &scriptedClient{}
+	agent := NewAgent(client, DefaultConfig())
+
+	// 验证 create_plan 工具已注册
+	tool, ok := agent.registry.Get("create_plan")
+	if !ok {
+		t.Fatal("create_plan 工具应已注册")
+	}
+	if tool.Definition.Function.Name != "create_plan" {
+		t.Errorf("工具名 = %q, 期望 %q", tool.Definition.Function.Name, "create_plan")
+	}
+
+	// 执行 create_plan 工具
+	planJSON := `{
+		"goal": "测试计划",
+		"steps": [
+			{"description": "第一步"},
+			{"description": "第二步"}
+		]
+	}`
+	result, err := tool.Execute(json.RawMessage(planJSON))
+	if err != nil {
+		t.Fatalf("执行 create_plan 错误: %v", err)
+	}
+
+	// 验证结果包含计划信息
+	if !strings.Contains(result, "测试计划") {
+		t.Errorf("结果应包含目标名，实际: %q", result)
+	}
+	if !strings.Contains(result, "第一步") {
+		t.Errorf("结果应包含步骤描述，实际: %q", result)
+	}
+
+	// 验证计划已被设置
+	current := agent.getCurrentPlan()
+	if current == nil {
+		t.Fatal("create_plan 后 currentPlan 不应为 nil")
+	}
+	if current.Goal != "测试计划" {
+		t.Errorf("计划目标 = %q, 期望 %q", current.Goal, "测试计划")
+	}
+}
+
+func TestCreatePlanTool_InvalidJSON(t *testing.T) {
+	client := &scriptedClient{}
+	agent := NewAgent(client, DefaultConfig())
+
+	tool, _ := agent.registry.Get("create_plan")
+
+	// 无效的 JSON
+	_, err := tool.Execute(json.RawMessage(`{invalid json`))
+	if err == nil {
+		t.Error("无效 JSON 应返回错误")
+	}
+	if !strings.Contains(err.Error(), "计划解析失败") {
+		t.Errorf("错误信息 = %q, 期望包含 '计划解析失败'", err.Error())
+	}
+}
+
+func TestAgentFormatSkillList(t *testing.T) {
+	client := &scriptedClient{}
+	agent := NewAgent(client, DefaultConfig())
+
+	result := agent.FormatSkillList()
+
+	// 验证包含所有技能
+	expectedSkills := []string{"general", "coder", "translator", "analyst", "storyteller"}
+	for _, name := range expectedSkills {
+		if !strings.Contains(result, name) {
+			t.Errorf("FormatSkillList 结果应包含 %q", name)
+		}
+	}
+
+	// 验证当前技能有标记
+	if !strings.Contains(result, "▶ general") {
+		t.Errorf("当前技能应有 ▶ 标记，实际: %q", result)
+	}
+
+	// 切换技能后验证
+	agent.SwitchSkill("coder")
+	result = agent.FormatSkillList()
+	if !strings.Contains(result, "▶ coder") {
+		t.Errorf("切换后当前技能应为 coder，实际: %q", result)
 	}
 }

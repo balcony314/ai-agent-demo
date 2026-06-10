@@ -5,7 +5,8 @@ ai-agent
 *.exe
 
 # 测试覆盖率
-coverage.out
+coverage.html
+*.out
 
 # IDE
 .idea/

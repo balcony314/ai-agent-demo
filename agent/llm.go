@@ -24,7 +24,6 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
-	"math/rand"
 	"net/http"
 	"strings"
 )
@@ -258,16 +257,4 @@ func (c *MockClient) summarizeToolResult(messages []Message) (*Message, error) {
 		Role:    RoleAssistant,
 		Content: reply,
 	}, nil
-}
-
-// ─── 辅助函数 ──────────────────────────────────────────────────
-
-// 随机 ID 生成（简化版）
-func randomID() string {
-	const chars = "abcdefghijklmnopqrstuvwxyz0123456789"
-	id := make([]byte, 12)
-	for i := range id {
-		id[i] = chars[rand.Intn(len(chars))]
-	}
-	return string(id)
 }

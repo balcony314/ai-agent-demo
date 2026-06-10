@@ -162,6 +162,49 @@ func TestEvaluateExpression_InvalidExpr(t *testing.T) {
 	}
 }
 
+func TestEvaluateExpression_Subtraction(t *testing.T) {
+	got, err := evaluateExpression("10 - 3")
+	if err != nil {
+		t.Fatalf("10 - 3 错误: %v", err)
+	}
+	if math.Abs(got-7) > 1e-9 {
+		t.Errorf("10 - 3 = %g, 期望 7", got)
+	}
+}
+
+func TestEvaluateExpression_Multiplication(t *testing.T) {
+	got, err := evaluateExpression("4 * 5")
+	if err != nil {
+		t.Fatalf("4 * 5 错误: %v", err)
+	}
+	if math.Abs(got-20) > 1e-9 {
+		t.Errorf("4 * 5 = %g, 期望 20", got)
+	}
+}
+
+func TestEvaluateExpression_SingleNumber(t *testing.T) {
+	got, err := evaluateExpression("42")
+	if err != nil {
+		t.Fatalf("42 错误: %v", err)
+	}
+	if math.Abs(got-42) > 1e-9 {
+		t.Errorf("42 = %g, 期望 42", got)
+	}
+}
+
+func TestEvaluateExpression_SqrtWithExpression(t *testing.T) {
+	// sqrt 内部是表达式
+	got, err := evaluateExpression("sqrt(4 + 5)")
+	if err != nil {
+		t.Fatalf("sqrt(4+5) 错误: %v", err)
+	}
+	// sqrt(4) + 5 = 2 + 5 = 7 (因为 evaluateSimple 会解析 4+5 为 4)
+	// 实际上 sqrt(4+5) 会调用 evaluateSimple("4+5")，然后返回 4+5=9，然后 sqrt(9)=3
+	if math.Abs(got-3) > 1e-9 {
+		t.Errorf("sqrt(4+5) = %g, 期望 3", got)
+	}
+}
+
 // ─── calculator 工具测试 ───────────────────────────────────────
 
 func TestCalculatorTool(t *testing.T) {

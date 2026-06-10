@@ -74,6 +74,21 @@ type Tool struct {
 	Execute    ToolFunc
 }
 
+// ─── 计划类型 ────────────────────────────────────────────────────
+
+// Plan 表示一个执行计划
+type Plan struct {
+    Goal  string `json:"goal"`  // 任务目标
+    Steps []Step `json:"steps"` // 步骤列表
+}
+
+// Step 表示计划中的一个步骤
+type Step struct {
+    ID          int    `json:"id"`          // 步骤编号
+    Description string `json:"description"` // 步骤描述
+    Status      string `json:"status"`      // 状态: pending/done/failed/skipped
+}
+
 // ─── Agent 配置 ──────────────────────────────────────────────────
 
 // Config 是 Agent 的配置

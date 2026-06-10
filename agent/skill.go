@@ -79,6 +79,11 @@ func RegisterBuiltinSkills(registry *SkillRegistry) {
 		SystemPrompt: `你是一个有用的 AI 助手。
 你可以使用工具来帮助回答问题。
 当你不确定时，请使用工具来获取信息，而不是编造答案。
+
+## 计划功能
+对于复杂任务（需要 3 个以上步骤），请先使用 create_plan 工具制定执行计划，然后按步骤执行。
+简单任务直接使用工具即可，无需创建计划。
+
 请用中文回复。`,
 		Tools: []string{}, // 空 = 全部工具
 	})
