@@ -2,7 +2,7 @@
 
 用 Go 实现的教学级 AI Agent，演示 **ReAct (Reasoning + Acting)** 模式。
 
-通过 OpenAI 兼容的 function calling，实现带工具调用的对话式 Agent。零第三方依赖，仅用标准库。
+通过 OpenAI 兼容的 function calling，实现带工具调用的对话式 Agent。使用 cobra 管理 CLI 命令。
 
 ## 🚀 快速开始
 
@@ -11,13 +11,16 @@
 go run .
 
 # 使用 OpenAI API
-go run . -api-key sk-your-key -model gpt-4o
+go run . --api-key sk-your-key --model gpt-4o
 
 # 使用 Ollama（本地运行）
-go run . -api-key dummy -base-url http://localhost:11434/v1 -model qwen2
+go run . --api-key dummy --base-url http://localhost:11434/v1 --model qwen2
+
+# 单次提问
+go run . chat "什么是 AI Agent"
 
 # 查看版本
-go run . -version
+go run . version
 ```
 
 启动后进入交互式 REPL，输入问题即可对话。输入 `quit` 退出。
@@ -26,6 +29,10 @@ go run . -version
 
 - `skills` — 列出所有可用技能
 - `skill <名称>` — 切换技能（如 `skill coder`）
+- `tools` — 列出所有可用工具
+- `history` — 查看对话历史
+- `reset` — 重置对话
+- `help` — 显示帮助信息
 - `quit` / `exit` / `q` — 退出程序
 
 ### 使用 Taskfile 构建
@@ -45,9 +52,13 @@ task --list         # 查看所有可用命令
 
 ```
 ai-agent-demo/
-├── main.go              # CLI 入口 + 交互式 REPL
+├── main.go              # 入口：调用 cmd.Execute()
+├── cmd/
+│   ├── root.go          # Root 命令 + 全局 flags + 交互式 REPL
+│   ├── chat.go          # chat 子命令：单次提问
+│   └── version.go       # version 子命令：版本信息
 ├── agent/
-│   ├── types.go         # 核心类型：Message, ToolCall, ToolDefinition, Config
+│   ├── types.go         # 核心类型：Message, ToolCall, ToolDefinition, Config, LLMClient 接口
 │   ├── tools.go         # 工具注册表 + 4 个内置工具
 │   ├── skill.go         # 技能注册表 + 5 个内置技能
 │   ├── llm.go           # LLM 客户端（OpenAI / Mock）
@@ -98,13 +109,19 @@ ai-agent-demo/
 
 ### CLI 参数
 
-| 参数 | 默认值 | 描述 |
-|------|--------|------|
-| `-api-key` | `""` | API Key（空则使用 Mock 模式） |
-| `-base-url` | `https://api.openai.com/v1` | API 地址 |
-| `-model` | `gpt-4o` | 模型名称 |
-| `-mock` | `false` | 强制使用 Mock 模式 |
-| `-version` | `false` | 显示版本号 |
+| 参数 | 短参数 | 默认值 | 描述 |
+|------|--------|--------|------|
+| `--api-key` | `-k` | `""` | API Key（空则使用 Mock 模式） |
+| `--base-url` | `-u` | `""` | API 地址（默认 OpenAI） |
+| `--model` | `-m` | `gpt-4o` | 模型名称 |
+| `--mock` | | `false` | 强制使用 Mock 模式 |
+
+### 子命令
+
+| 命令 | 描述 |
+|------|------|
+| `chat [问题]` | 单次提问（非交互式） |
+| `version` | 显示版本信息 |
 
 ### 扩展工具
 
@@ -113,22 +130,16 @@ ai-agent-demo/
 ```go
 registry.Register(Tool{
     Definition: ToolDefinition{
-        Name:        "my_tool",
-        Description: "工具描述（LLM 根据这个决定何时调用）",
-        Parameters: map[string]interface{}{
-            "type": "object",
-            "properties": map[string]interface{}{
-                "input": map[string]interface{}{
-                    "type":        "string",
-                    "description": "参数说明",
-                },
-            },
-            "required": []string{"input"},
+        Type: "function",
+        Function: FunctionSchema{
+            Name:        "my_tool",
+            Description: "工具描述（LLM 根据这个决定何时调用）",
+            Parameters:  json.RawMessage(`{"type": "object", "properties": {...}}`),
         },
     },
-    Execute: func(args map[string]interface{}) (string, error) {
-        // 工具逻辑
-        return "结果", nil
+    Execute: func(args json.RawMessage) (string, error) {
+        // 解析参数、执行逻辑、返回结果
+        return "result", nil
     },
 })
 ```
@@ -139,11 +150,26 @@ registry.Register(Tool{
 
 ```go
 registry.Register(Skill{
-    Name:        "my_skill",
-    Description: "技能描述",
+    Name:         "my_skill",
+    Description:  "技能描述",
     SystemPrompt: "你是一个自定义角色...",
-    Tools:       []string{"search", "calculate"}, // 可选：限制可用工具
+    Tools:        []string{"search", "calculate"}, // 可选：限制可用工具
 })
+```
+
+## 🧪 测试
+
+```bash
+# 运行所有测试
+go test ./...
+
+# 运行测试并生成覆盖率报告
+go test ./... -coverprofile=coverage.out
+
+# 查看覆盖率详情
+go tool cover -func=coverage.out
+
+# 当前覆盖率：73.3%
 ```
 
 ## 📄 License
