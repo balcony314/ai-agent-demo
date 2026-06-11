@@ -238,11 +238,12 @@ func (c *MockClient) mockToolCall(tools []ToolDefinition) (*Message, error) {
 }
 
 func (c *MockClient) mockTextReply(messages []Message) (*Message, error) {
-	// 分析用户消息生成回复
+	// 从后向前找最后一条用户消息
 	userMsg := ""
-	for _, m := range messages {
-		if m.Role == RoleUser {
-			userMsg = m.Content
+	for i := len(messages) - 1; i >= 0; i-- {
+		if messages[i].Role == RoleUser {
+			userMsg = messages[i].Content
+			break
 		}
 	}
 
@@ -255,7 +256,6 @@ func (c *MockClient) mockTextReply(messages []Message) (*Message, error) {
 	default:
 		reply = fmt.Sprintf("收到你的消息：「%s」\n\n这是一个 Mock 模式的回复。要体验真正的 AI Agent，请设置 API Key 后运行。", userMsg)
 	}
-	// 返回 message 和 nil（这里不需要修改 reply）
 	return &Message{
 		Role:    RoleAssistant,
 		Content: reply,
@@ -263,14 +263,8 @@ func (c *MockClient) mockTextReply(messages []Message) (*Message, error) {
 }
 
 func (c *MockClient) summarizeToolResult(messages []Message) (*Message, error) {
-	// 找到最后的工具结果
-	var toolResult string
-	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == RoleTool {
-			toolResult = messages[i].Content
-			break
-		}
-	}
+	// 调用方已确认最后一条是 RoleTool，直接取用
+	toolResult := messages[len(messages)-1].Content
 
 	// 简单的总结逻辑（教学用）
 	reply := fmt.Sprintf("根据工具返回的结果：\n\n%s\n\n以上是工具的原始输出。在真实 Agent 中，LLM 会用自然语言重新组织这些信息来回答用户。", toolResult)

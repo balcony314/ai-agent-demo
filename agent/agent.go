@@ -54,7 +54,6 @@ type Agent struct {
 	currentSkill string         // 当前激活的技能名称
 	history      []Message      // 对话历史
 	currentPlan  *Plan          // 当前执行的计划
-	planStep     int            // 当前执行到的步骤索引
 }
 
 // NewAgent 创建一个新的 Agent
@@ -236,36 +235,17 @@ func (a *Agent) registerPlanTool() {
 	})
 }
 
-// setPlan 设置当前计划
+// setPlan 设置当前计划（创建副本，不修改原始数据）
 func (a *Agent) setPlan(plan Plan) {
-	// 为每个步骤设置初始状态和 ID
-	for i := range plan.Steps {
-		plan.Steps[i].ID = i + 1
-		plan.Steps[i].Status = "pending"
+	steps := make([]Step, len(plan.Steps))
+	for i, s := range plan.Steps {
+		steps[i] = Step{
+			ID:          i + 1,
+			Description: s.Description,
+			Status:      "pending",
+		}
 	}
-	a.currentPlan = &plan
-	a.planStep = 0
-}
-
-// nextPlanStep 获取下一个待执行的步骤
-func (a *Agent) nextPlanStep() *Step {
-	if a.currentPlan == nil || a.planStep >= len(a.currentPlan.Steps) {
-		return nil
-	}
-	step := &a.currentPlan.Steps[a.planStep]
-	a.planStep++
-	return step
-}
-
-// clearPlan 清除当前计划
-func (a *Agent) clearPlan() {
-	a.currentPlan = nil
-	a.planStep = 0
-}
-
-// getCurrentPlan 获取当前计划（用于日志显示）
-func (a *Agent) getCurrentPlan() *Plan {
-	return a.currentPlan
+	a.currentPlan = &Plan{Goal: plan.Goal, Steps: steps}
 }
 
 // ─── 辅助函数 ──────────────────────────────────────────────────

@@ -87,8 +87,6 @@ Plan 是执行计划机制，让 Agent 能够为复杂任务制定步骤。
 相关方法（在 agent.go 中）：
 - `registerPlanTool()` — 注册 create_plan 工具
 - `setPlan()` — 设置当前计划
-- `nextPlanStep()` — 获取下一个待执行步骤
-- `clearPlan()` — 清除当前计划
 
 ## 代码风格
 

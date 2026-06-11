@@ -595,105 +595,6 @@ func TestSetPlan(t *testing.T) {
 	}
 }
 
-func TestNextPlanStep(t *testing.T) {
-	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
-
-	// 没有计划时返回 nil
-	if step := agent.nextPlanStep(); step != nil {
-		t.Error("没有计划时 nextPlanStep 应返回 nil")
-	}
-
-	// 设置计划
-	plan := Plan{
-		Goal: "测试",
-		Steps: []Step{
-			{Description: "步骤一"},
-			{Description: "步骤二"},
-		},
-	}
-	agent.setPlan(plan)
-
-	// 获取第一个步骤
-	step1 := agent.nextPlanStep()
-	if step1 == nil {
-		t.Fatal("第一个步骤不应为 nil")
-	}
-	if step1.Description != "步骤一" {
-		t.Errorf("步骤一描述 = %q, 期望 %q", step1.Description, "步骤一")
-	}
-
-	// 获取第二个步骤
-	step2 := agent.nextPlanStep()
-	if step2 == nil {
-		t.Fatal("第二个步骤不应为 nil")
-	}
-	if step2.Description != "步骤二" {
-		t.Errorf("步骤二描述 = %q, 期望 %q", step2.Description, "步骤二")
-	}
-
-	// 已经没有更多步骤
-	step3 := agent.nextPlanStep()
-	if step3 != nil {
-		t.Error("超出步骤数时应返回 nil")
-	}
-}
-
-func TestClearPlan(t *testing.T) {
-	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
-
-	// 设置计划
-	plan := Plan{
-		Goal: "测试",
-		Steps: []Step{
-			{Description: "步骤一"},
-		},
-	}
-	agent.setPlan(plan)
-
-	if agent.currentPlan == nil {
-		t.Fatal("setPlan 后 currentPlan 不应为 nil")
-	}
-
-	// 清除计划
-	agent.clearPlan()
-
-	if agent.currentPlan != nil {
-		t.Error("clearPlan 后 currentPlan 应为 nil")
-	}
-	if agent.planStep != 0 {
-		t.Errorf("clearPlan 后 planStep = %d, 期望 0", agent.planStep)
-	}
-}
-
-func TestGetCurrentPlan(t *testing.T) {
-	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
-
-	// 初始时没有计划
-	if plan := agent.getCurrentPlan(); plan != nil {
-		t.Error("初始时 getCurrentPlan 应返回 nil")
-	}
-
-	// 设置计划后
-	plan := Plan{
-		Goal: "测试目标",
-		Steps: []Step{
-			{Description: "步骤一"},
-		},
-	}
-	agent.setPlan(plan)
-
-	current := agent.getCurrentPlan()
-	if current == nil {
-		t.Fatal("设置计划后 getCurrentPlan 不应为 nil")
-	}
-	if current.Goal != "测试目标" {
-		t.Errorf("Goal = %q, 期望 %q", current.Goal, "测试目标")
-	}
-}
-
 func TestCreatePlanTool(t *testing.T) {
 	client := &scriptedClient{}
 	agent := NewAgent(client, DefaultConfig())
@@ -729,12 +630,11 @@ func TestCreatePlanTool(t *testing.T) {
 	}
 
 	// 验证计划已被设置
-	current := agent.getCurrentPlan()
-	if current == nil {
+	if agent.currentPlan == nil {
 		t.Fatal("create_plan 后 currentPlan 不应为 nil")
 	}
-	if current.Goal != "测试计划" {
-		t.Errorf("计划目标 = %q, 期望 %q", current.Goal, "测试计划")
+	if agent.currentPlan.Goal != "测试计划" {
+		t.Errorf("计划目标 = %q, 期望 %q", agent.currentPlan.Goal, "测试计划")
 	}
 }
 

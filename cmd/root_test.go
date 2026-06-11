@@ -3,6 +3,8 @@ package cmd
 import (
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"os/exec"
 	"testing"
 
 	"ai-agent-demo/agent"
@@ -110,6 +112,14 @@ func TestPrintHistory_WithToolCalls(t *testing.T) {
 	printHistory(history)
 }
 
+func TestPrintHistory_UnknownRole(t *testing.T) {
+	// 测试未知 role 的 default 分支
+	history := []agent.Message{
+		{Role: agent.Role("custom"), Content: "自定义角色消息"},
+	}
+	printHistory(history)
+}
+
 // ─── checkAPIConnection 测试 ──────────────────────────────────
 
 func TestCheckAPIConnection_MockClient(t *testing.T) {
@@ -126,4 +136,29 @@ func TestCheckAPIConnection_OpenAIClientSuccess(t *testing.T) {
 
 	client := agent.NewOpenAIClient("sk-test", server.URL, "gpt-4o")
 	checkAPIConnection(client) // 不应退出
+}
+
+// checkAPIConnection 失败时调用 os.Exit(1)，需要用子进程测试
+func TestCheckAPIConnection_Failure(t *testing.T) {
+	if os.Getenv("TEST_CHECK_API_FAIL") == "1" {
+		// 子进程：连接一个不存在的地址，触发 os.Exit(1)
+		client := agent.NewOpenAIClient("sk-test", "http://127.0.0.1:1", "gpt-4o")
+		checkAPIConnection(client)
+		return
+	}
+
+	// 主进程：启动子进程并验证退出码
+	cmd := exec.Command(os.Args[0], "-test.run=TestCheckAPIConnection_Failure")
+	cmd.Env = append(os.Environ(), "TEST_CHECK_API_FAIL=1")
+	err := cmd.Run()
+	if err == nil {
+		t.Fatal("子进程应以非零退出码退出")
+	}
+	exitErr, ok := err.(*exec.ExitError)
+	if !ok {
+		t.Fatalf("预期 ExitError，实际: %v", err)
+	}
+	if exitErr.ExitCode() != 1 {
+		t.Errorf("退出码 = %d, 期望 1", exitErr.ExitCode())
+	}
 }

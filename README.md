@@ -191,7 +191,7 @@ go tool cover -func=coverage.out
 # 生成 HTML 覆盖率报告
 go tool cover -html=coverage.out -o coverage.html
 
-# 当前覆盖率：85.9%（agent 包 97.3%）
+# 当前覆盖率：86.5%（agent 包 97.1%）
 ```
 
 ## 🐛 常见问题
