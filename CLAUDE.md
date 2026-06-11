@@ -95,3 +95,6 @@ Plan 是执行计划机制，让 Agent 能够为复杂任务制定步骤。
 - 注释和文档为中文（教学项目）
 - 标准 Go 错误处理：`fmt.Errorf` + `%w` 包装
 - 全程使用 OpenAI API 兼容的请求/响应格式
+- 参考规范：
+  - [Uber Go 语言风格指南（中文）](https://github.com/xxjwxc/uber_go_guide_cn)
+  - [Go 标准项目布局](https://github.com/golang-standards/project-layout)

@@ -23,7 +23,9 @@ go run . chat "什么是 AI Agent"
 go run . version
 ```
 
-启动后进入交互式 REPL，输入问题即可对话。输入 `quit` 退出。
+启动后会先检查 API 连接，通过后进入交互式 REPL，输入问题即可对话。输入 `quit` 退出。
+
+> **注意**：如果遇到 `no such host` 错误但 `ping` 正常，尝试 `GODEBUG=netdns=cgo` 前缀。
 
 ### 交互命令
 
@@ -93,6 +95,8 @@ ai-agent-demo/
 ### 关键抽象
 
 - **`LLMClient` 接口**（`Chat` 方法）— 可在 `OpenAIClient` 和 `MockClient` 之间切换
+- **`OpenAIClient.Ping()`** — 启动时检查 API 可达性，带 Auth header，失败则退出
+- **`ConfigWithModel(model)`** — 将模型名注入系统提示词，让 LLM 知道自己使用的模型
 - **`ToolRegistry`** — `map[string]Tool`，提供 `Register`/`Get`/`Definitions`
 - **`SkillRegistry`** — `map[string]Skill`，提供 `Register`/`Get`/`List`
 - **`Message`** — role + content + 可选的 tool_calls/tool_call_id，对齐 OpenAI chat 格式
@@ -188,6 +192,27 @@ go tool cover -func=coverage.out
 go tool cover -html=coverage.out -o coverage.html
 
 # 当前覆盖率：85.9%（agent 包 97.3%）
+```
+
+## 🐛 常见问题
+
+### 启动时连接检查失败
+
+```
+🔗 检查 API 连接... ❌
+❌ 无法连接到 API: ...
+```
+
+- 检查 `--api-key` 和 `--base-url` 是否正确
+- 确认域名可达：`ping <hostname>`
+
+### DNS 解析失败（Go 特有）
+
+`ping` 正常但 Go 报 `no such host`，是因为 Go 默认使用纯 Go DNS 解析器：
+
+```bash
+# 使用系统 DNS 解析器
+GODEBUG=netdns=cgo ./ai-agent --api-key ... --base-url ...
 ```
 
 ## 📄 License
