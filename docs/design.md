@@ -2,13 +2,13 @@
 
 ## 项目定位
 
-一个教学级 AI Agent 框架，用 Go 语言实现 **ReAct (Reasoning + Acting)** 模式。目标是让开发者通过阅读源码理解 AI Agent 的核心原理，而非构建生产级系统。
+一个教学级 AI Agent 框架，用 Go 语言实现 **Plan + ReAct** 两阶段执行模式。目标是让开发者通过阅读源码理解 AI Agent 的核心原理，而非构建生产级系统。
 
 ## 整体架构
 
 ```mermaid
 graph TB
-    User["用户 (终端)<br/>帮我算一下 sqrt(144)"] --> CMD
+    User["用户 (终端)<br/>帮我分析代码性能"] --> CMD
 
     subgraph CMD["cmd/ (CLI 层)"]
         direction LR
@@ -20,26 +20,32 @@ graph TB
     CMD --> |"解析参数、创建 LLM 客户端、驱动 Agent"| Agent
 
     subgraph Agent["agent/ (核心层)"]
-        AgentCore["Agent (agent.go)<br/>Run(userInput) → ReAct 循环"]
+        AgentCore["Agent (agent.go)<br/>Run(userInput) → Plan + ReAct"]
 
-        subgraph ReactLoop["ReAct 循环"]
+        subgraph PlanPhase["阶段 1: Plan"]
             direction TB
-            S1["1. 用户消息加入 history"]
-            S2["2. 发送 history + tools → LLM"]
-            S3["3. LLM 返回 tool_calls?"]
-            S4["是 → 执行工具 → 结果加入 history"]
-            S5["否 → 返回 content 作为最终回答"]
-            S1 --> S2 --> S3
-            S3 --> |"是"| S4 --> S2
-            S3 --> |"否"| S5
+            P1["planPhase(): LLM 分析任务复杂度"]
+            P2["简单? → nil → 直接 ReAct"]
+            P3["复杂? → create_plan → 返回 Plan"]
+            P1 --> P2
+            P1 --> P3
         end
 
-        AgentCore --> ReactLoop
+        subgraph ExecutePhase["阶段 2: Execute"]
+            direction TB
+            E1["逐步骤执行 executeStep()"]
+            E2["ReAct 循环: LLM → tool_calls → 执行 → 回传"]
+            E3["汇总结果 summarizeResults()"]
+            E1 --> E2 --> E3
+        end
+
+        AgentCore --> PlanPhase
+        PlanPhase --> ExecutePhase
 
         LLM["LLMClient (llm.go)<br/>OpenAIClient / MockClient"]
-        Tools["ToolRegistry (tools.go)<br/>calculator / current_time<br/>search / text_transform"]
-        Skills["SkillRegistry (skill.go)<br/>general / coder / translator<br/>analyst / storyteller<br/>每个 Skill = SystemPrompt + 可用工具列表"]
-        Types["types.go<br/>核心类型：Message, ToolCall, Config 等"]
+        Tools["ToolRegistry (tools.go)<br/>calculator / current_time<br/>search / text_transform / create_plan"]
+        Skills["SkillRegistry (skill.go)<br/>general / coder / translator<br/>analyst / storyteller"]
+        Types["types.go<br/>核心类型：Message, ToolCall, Plan, Config 等"]
 
         AgentCore --> LLM
         AgentCore --> Tools
@@ -48,6 +54,15 @@ graph TB
 ```
 
 ## 核心概念
+
+### Plan + ReAct 两阶段执行
+
+Agent 采用两阶段模式处理用户任务：
+
+**阶段 1: Plan** — LLM 分析任务复杂度，复杂任务生成执行计划
+**阶段 2: Execute** — 对计划中的每个步骤执行 ReAct 循环
+
+简单任务跳过 Plan，直接进入 ReAct。
 
 ### ReAct 循环
 
@@ -105,6 +120,8 @@ Skill 是 Agent 的"人格切换"机制。每个 Skill 包含：
 | `ToolCall` | LLM 请求调用的工具（ID + 函数名 + 参数） |
 | `ToolDefinition` | 工具的 JSON Schema 描述（发给 LLM） |
 | `Tool` | 完整工具 = Definition + Execute 函数 |
+| `Plan` | 执行计划：Goal + Steps |
+| `Step` | 计划步骤：ID + Description + Status |
 | `Config` | Agent 配置：SystemPrompt + MaxTurns |
 
 **设计决策**：所有类型直接对齐 OpenAI API 格式，避免额外转换层。
@@ -135,7 +152,7 @@ type ToolRegistry struct {
 }
 ```
 
-内置 4 个工具：
+内置 5 个工具：
 
 | 工具 | 功能 | 参数 |
 |------|------|------|
@@ -143,6 +160,7 @@ type ToolRegistry struct {
 | `current_time` | 获取时间 | `timezone?: string` |
 | `search` | 模拟搜索 | `query: string` |
 | `text_transform` | 文本转换 | `text: string, operation: enum` |
+| `create_plan` | 创建执行计划 | `goal: string, steps: []{description}` |
 
 **设计决策**：注册表模式让工具可动态添加，LLM 通过 `Definitions()` 获取所有工具的 schema。
 
@@ -168,16 +186,26 @@ Agent 是整个系统的中枢，组合了：
 - `SkillRegistry`（人格）
 - `history`（记忆）
 
-`Run()` 方法实现 ReAct 循环，是理解整个系统的关键入口。
+`Run()` 方法实现 Plan + ReAct 两阶段执行：
+
+| 方法 | 职责 |
+|------|------|
+| `Run(userInput)` | 主入口：Plan 阶段 → Execute 阶段 → 汇总结果 |
+| `planPhase()` | 阶段 1：调用 LLM 判断任务复杂度，复杂任务生成 Plan |
+| `parsePlanResponse()` | 解析 LLM 响应，判断是否创建计划 |
+| `executeStep()` | 对单个计划步骤构建提示并调用 reactLoop |
+| `reactLoop()` | ReAct 核心循环：LLM → 工具 → 结果回传 |
+| `summarizeResults()` | 汇总所有步骤结果，生成最终答案 |
 
 ## 数据流
 
-一次完整的 Agent 调用：
+一次完整的 Agent 调用（简单任务，跳过 Plan）：
 
 ```mermaid
 flowchart TD
     A["用户输入: 帮我算 sqrt(144)"] --> B["Agent.Run() 加入 history"]
-    B --> C["LLM.Chat(history, tools)"]
+    B --> B2["planPhase() → LLM 回复 SIMPLE → 跳过计划"]
+    B2 --> C["reactLoop() → LLM.Chat(history, tools)"]
     C --> D["LLM 返回 tool_calls:<br/>{name: calculator, args: {expression: sqrt(144)}}"]
     D --> E["Agent.executeTool(calculator, args)"]
     E --> F["Tool.Execute(args) → 计算结果: sqrt(144) = 12"]
@@ -191,6 +219,8 @@ flowchart TD
     style C fill:#e1e5ff
     style H fill:#e1e5ff
 ```
+
+复杂任务会先经过 Plan 阶段生成执行计划，再逐步骤执行 ReAct 循环。
 
 ## 设计决策
 

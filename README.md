@@ -1,8 +1,10 @@
 # AI Agent Demo
 
-用 Go 实现的教学级 AI Agent，演示 **ReAct (Reasoning + Acting)** 模式。
+用 Go 实现的教学级 AI Agent，演示 **Plan + ReAct** 两阶段执行模式。
 
 通过 OpenAI 兼容的 function calling，实现带工具调用的对话式 Agent。使用 cobra 管理 CLI 命令。
+
+支持 **ReAct + Plan 机制**：对于复杂任务，Agent 可以先创建执行计划，再按步骤执行。
 
 ## 🚀 快速开始
 
@@ -64,7 +66,7 @@ ai-agent-demo/
 │   ├── tools.go         # 工具注册表 + 5 个内置工具
 │   ├── skill.go         # 技能注册表 + 5 个内置技能
 │   ├── llm.go           # LLM 客户端（OpenAI Ping + Chat / Mock）
-│   └── agent.go         # ReAct 编排循环 + 技能切换
+│   └── agent.go         # Plan + ReAct 两阶段编排 + 技能切换
 ├── Taskfile.yml         # Task 构建配置
 └── build/               # 编译输出（gitignore）
 ```
@@ -77,20 +79,21 @@ ai-agent-demo/
          Skill 系统（角色切换）                        Plan 系统（任务规划）
 ```
 
-核心是 **ReAct 循环**：LLM 生成文本或工具调用 → Agent 执行工具 → 把结果喂回 LLM → 循环（最多 10 轮），直到 LLM 输出最终文本回答。
-
-### ReAct + Plan 机制
-
-对于复杂任务，Agent 支持 **Plan 机制**：
-
-1. LLM 判断任务复杂度，决定是否需要创建计划
-2. 使用 `create_plan` 工具生成执行步骤
-3. 按步骤逐一执行，完成后给出最终总结
+采用 **Plan + ReAct 两阶段执行模式**：
 
 ```
-简单任务: 用户输入 → ReAct 循环 → 回答
-复杂任务: 用户输入 → 创建计划 → 按步骤执行 → 总结回答
+用户消息
+   ↓
+阶段 1: Plan（planPhase）
+   LLM 分析任务复杂度 → 简单任务直接 ReAct，复杂任务生成执行计划
+   ↓
+阶段 2: Execute
+   对计划中的每个步骤执行 ReAct 循环（reactLoop）
+   ↓
+汇总结果（summarizeResults）→ 返回最终答案
 ```
+
+简单任务（单步可完成）跳过 Plan，直接进入 ReAct 循环。
 
 ### 关键抽象
 
@@ -191,7 +194,7 @@ go tool cover -func=coverage.out
 # 生成 HTML 覆盖率报告
 go tool cover -html=coverage.out -o coverage.html
 
-# 当前覆盖率：86.5%（agent 包 97.1%）
+# 当前覆盖率：96.5%（agent 包 97.8%）
 ```
 
 ## 🐛 常见问题

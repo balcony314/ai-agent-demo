@@ -94,7 +94,7 @@ ai-agent-demo/
 │   ├── tools.go         # 工具注册表
 │   ├── skill.go         # 技能注册表
 │   ├── llm.go           # LLM 客户端
-│   └── agent.go         # ReAct 编排
+│   └── agent.go         # Plan + ReAct 两阶段编排
 ├── docs/                # 文档
 ├── Taskfile.yml         # 构建配置
 └── build/               # 编译输出

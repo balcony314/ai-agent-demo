@@ -1,25 +1,24 @@
-// Package agent 实现了基于 ReAct 模式的 AI Agent 框架。
+// Package agent 实现了基于 Plan + ReAct 两阶段执行模式的 AI Agent 框架。
 //
 // # 核心概念
 //
-// ReAct = Reasoning + Acting，让 LLM 从"只能说"变成"能做"。
-// Agent 通过 ReAct 循环协调 LLM（大脑）和 Tools（手脚）完成用户任务。
+// Agent 采用两阶段执行模式：
+//   - Plan 阶段：LLM 分析任务复杂度，复杂任务生成执行计划
+//   - Execute 阶段：对计划中的每个步骤执行 ReAct 循环（推理 → 行动 → 观察）
+//
+// 简单任务跳过 Plan，直接进入 ReAct 循环。
 //
 // # 架构
 //
-//	┌─────────────────────────────────────────────────┐
-//	│  Agent (agent.go)                               │
-//	│  ┌───────────────────────────────────────────┐  │
-//	│  │  ReAct Loop:                              │  │
-//	│  │  用户消息 → LLM → tool_calls?             │  │
-//	│  │    ├─ 是 → 执行工具 → 结果喂回 LLM       │  │
-//	│  │    └─ 否 → 返回最终回答                   │  │
-//	│  └───────────────────────────────────────────┘  │
-//	│         │                    │                  │
-//	│         ▼                    ▼                  │
-//	│  LLMClient (llm.go)   ToolRegistry (tools.go)  │
-//	│  SkillRegistry (skill.go)                       │
-//	└─────────────────────────────────────────────────┘
+//	用户消息
+//	   ↓
+//	Plan 阶段 (planPhase)
+//	   LLM 判断复杂度 → 简单? 直接 ReAct / 复杂? 生成 Plan
+//	   ↓
+//	Execute 阶段 (executeStep → reactLoop)
+//	   逐步骤执行 ReAct 循环: LLM → tool_calls → 执行工具 → 结果回传
+//	   ↓
+//	汇总结果 (summarizeResults) → 最终答案
 //
 // # 关键类型
 //
@@ -27,6 +26,7 @@
 //   - [Tool]: 工具定义 = JSON Schema + Execute 函数
 //   - [LLMClient]: LLM 接口，支持 OpenAIClient 和 MockClient
 //   - [Skill]: 预设角色配置（SystemPrompt + 工具列表）
+//   - [Plan] / [Step]: 执行计划及步骤
 //   - [Agent]: 编排核心，组合 LLM + Tools + Skills
 //
 // # 快速开始

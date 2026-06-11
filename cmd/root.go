@@ -27,7 +27,7 @@ var (
 var rootCmd = &cobra.Command{
 	Use:   "ai-agent-demo",
 	Short: "🤖 AI Agent 教学 Demo",
-	Long: `基于 ReAct (Reasoning + Acting) 模式的 AI Agent 教学演示。
+	Long: `基于 Plan + ReAct 两阶段执行模式的 AI Agent 教学演示。
 支持 OpenAI 兼容 API（OpenAI/Ollama/vLLM 等），内置 Mock 模式无需 API Key。`,
 	RunE: runREPL,
 }
@@ -153,7 +153,7 @@ func printBanner() {
 ╔══════════════════════════════════════════════════════╗
 ║           🤖 AI Agent 教学 Demo (Go)                ║
 ║                                                      ║
-║   核心概念: ReAct Loop (Reasoning + Acting)          ║
+║   核心概念: Plan + ReAct 两阶段执行                  ║
 ║   架构: LLM + Tools + 智能循环                       ║
 ║   传输: stdio 交互式                                 ║
 ╚══════════════════════════════════════════════════════╝
@@ -188,6 +188,10 @@ func printHelp() {
   • translator - 翻译官
   • analyst    - 数据分析师
   • storyteller - 故事大王
+
+📋 执行模式:
+  • 简单任务: 直接使用 ReAct 循环执行
+  • 复杂任务: 先制定计划，再逐步执行
 `)
 }
 

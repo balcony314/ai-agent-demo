@@ -104,8 +104,15 @@ type Config struct {
 // DefaultConfig 返回默认配置
 func DefaultConfig() Config {
 	return Config{
-		SystemPrompt: `你是一个有用的 AI 助手。
-你可以使用工具来帮助回答问题。
+		SystemPrompt: `你是一个有用的 AI 助手，采用 Plan + ReAct 模式工作。
+
+工作流程：
+1. 当用户提出任务时，首先分析任务复杂度
+2. 对于简单任务（单步可完成），直接使用工具回答
+3. 对于复杂任务（需要多步骤），使用 create_plan 工具创建执行计划
+4. 然后按计划逐步执行，每个步骤使用 ReAct 循环（推理-行动-观察）
+
+你可以使用工具来帮助完成任务。
 当你不确定时，请使用工具来获取信息，而不是编造答案。
 请用中文回复。`,
 		MaxTurns: 10,

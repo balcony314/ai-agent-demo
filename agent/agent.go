@@ -1,43 +1,54 @@
 package agent
 
 // ═══════════════════════════════════════════════════════════════
-// agent.go — Agent 核心：ReAct 循环
+// agent.go — Agent 核心：Plan + ReAct 循环
 // ═══════════════════════════════════════════════════════════════
 //
-// 【教学要点】什么是 ReAct？
+// 【教学要点】Plan + ReAct 模式
 //
-// ReAct = Reasoning + Acting（推理 + 行动）
+// 本 Agent 采用两阶段执行模式：
 //
-// 传统 LLM 只能 "想"（生成文本），不能 "做"（执行操作）。
-// ReAct 让 LLM 变成 Agent：
+//   ┌─────────────────────────────────────────────────────────┐
+//   │  用户: "帮我分析这段代码的性能问题并给出优化建议"        │
+//   └─────────────────────────────────────────────────────────┘
+//                          ↓
+//   ┌─────────────────────────────────────────────────────────┐
+//   │  阶段 1: Plan（计划）                                   │
+//   │  ┌──────────────────────────────────────────────────┐   │
+//   │  │  LLM 分析任务 → 生成执行计划                      │   │
+//   │  │  ┌────────────────────────────────────────────┐   │   │
+//   │  │  │  目标: 分析代码性能问题并给出优化建议        │   │   │
+//   │  │  │  步骤 1: 读取代码文件                        │   │   │
+//   │  │  │  步骤 2: 分析性能瓶颈                        │   │   │
+//   │  │  │  步骤 3: 生成优化建议                        │   │   │
+//   │  │  └────────────────────────────────────────────┘   │   │
+//   │  └──────────────────────────────────────────────────┘   │
+//   └─────────────────────────────────────────────────────────┘
+//                          ↓
+//   ┌─────────────────────────────────────────────────────────┐
+//   │  阶段 2: Execute（执行）                                │
+//   │  ┌──────────────────────────────────────────────────┐   │
+//   │  │  对每个步骤执行 ReAct 循环:                       │   │
+//   │  │                                                   │   │
+//   │  │  步骤 1: 读取代码文件                             │   │
+//   │  │    └─ ReAct: THINK → ACT(read_file) → OBSERVE    │   │
+//   │  │                                                   │   │
+//   │  │  步骤 2: 分析性能瓶颈                             │   │
+//   │  │    └─ ReAct: THINK → ACT(analyze) → OBSERVE      │   │
+//   │  │                                                   │   │
+//   │  │  步骤 3: 生成优化建议                             │   │
+//   │  │    └─ ReAct: THINK → ACT(suggest) → OBSERVE      │   │
+//   │  └──────────────────────────────────────────────────┘   │
+//   └─────────────────────────────────────────────────────────┘
+//                          ↓
+//   ┌─────────────────────────────────────────────────────────┐
+//   │  汇总所有步骤结果 → 返回最终答案                        │
+//   └─────────────────────────────────────────────────────────┘
 //
-//   ┌─────────────────────────────────────────────────┐
-//   │                                                 │
-//   │  User: "北京现在几点？10分钟前呢？"              │
-//   │                                                 │
-//   │  ┌─── ReAct Loop ───────────────────────────┐   │
-//   │  │                                          │   │
-//   │  │  THINK: 用户问时间，我需要先获取当前时间   │   │
-//   │  │    → 决定调用 current_time 工具           │   │
-//   │  │                                          │   │
-//   │  │  ACT: 调用 current_time()               │   │
-//   │  │    → 返回 "14:30:25"                     │   │
-//   │  │                                          │   │
-//   │  │  OBSERVE: 当前是 14:30                    │   │
-//   │  │    → 10分钟前是 14:20                    │   │
-//   │  │                                          │   │
-//   │  │  THINK: 信息够了，可以回答了              │   │
-//   │  │    → 生成最终回复                        │   │
-//   │  │                                          │   │
-//   │  └──────────────────────────────────────────┘   │
-//   │                                                 │
-//   │  Agent: "现在是 14:30，10分钟前是 14:20"        │
-//   │                                                 │
-//   └─────────────────────────────────────────────────┘
-//
-// 关键洞察：LLM 不直接输出答案，而是输出 "我想要做什么"（tool_calls），
-// Agent 框架执行后把结果喂回去，LLM 再决定下一步。
-// 这个循环可以执行多轮，直到 LLM 认为信息足够了。
+// 优势：
+//   - 复杂任务被拆解为可管理的步骤
+//   - 每个步骤独立执行，便于调试和错误处理
+//   - 用户可以看到清晰的执行进度
 
 import (
 	"encoding/json"
@@ -86,15 +97,13 @@ func NewAgent(llm LLMClient, config Config) *Agent {
 	return agent
 }
 
-// ─── 核心：ReAct 循环 ──────────────────────────────────────────
+// ─── 核心：Plan + ReAct 循环 ──────────────────────────────────
 
-// Run 是 Agent 的主循环
-// 每次用户输入一条消息，Agent 会：
-//   1. 把消息加入对话历史
-//   2. 进入 ReAct 循环（最多 MaxTurns 轮）
-//   3. 每轮让 LLM 决定下一步（回复 or 调用工具）
-//   4. 如果 LLM 要调用工具 → 执行工具 → 把结果放回历史 → 继续循环
-//   5. 如果 LLM 直接回复 → 返回最终答案 → 退出循环
+// Run 是 Agent 的主循环，采用 Plan + ReAct 两阶段模式
+//   1. 把用户消息加入对话历史
+//   2. Plan 阶段：调用 LLM 生成执行计划
+//   3. Execute 阶段：对计划中的每个步骤执行 ReAct 循环
+//   4. 汇总所有步骤结果，返回最终答案
 func (a *Agent) Run(userInput string) (string, error) {
 	fmt.Printf("\n%s\n", strings.Repeat("─", 50))
 	fmt.Printf("📝 用户: %s\n", userInput)
@@ -106,57 +115,182 @@ func (a *Agent) Run(userInput string) (string, error) {
 		Content: userInput,
 	})
 
-	// 2. ReAct 循环：最多 MaxTurns 轮，每轮 LLM 要么调用工具，要么给出最终回答
-	for turn := 0; turn < a.config.MaxTurns; turn++ {
-		fmt.Printf("🔄 推理轮次 %d/%d\n", turn+1, a.config.MaxTurns)
+	// 2. Plan 阶段：生成执行计划
+	plan, err := a.planPhase()
+	if err != nil {
+		return "", fmt.Errorf("计划生成失败: %w", err)
+	}
 
-		// 3. 把当前对话历史 + 工具定义发给 LLM
-		//    LLM 会根据历史和工具描述，决定是回复文本还是调用工具
-		//    根据当前技能过滤可用工具
-		tools := a.getSkillTools()
-		response, err := a.llm.Chat(a.history, tools)
+	// 简单任务无需计划，直接用 ReAct 执行
+	if plan == nil {
+		return a.reactLoop("直接回答用户问题")
+	}
+
+	// 3. Execute 阶段：逐步执行计划
+	fmt.Printf("\n🚀 开始执行计划: %s\n", plan.Goal)
+	fmt.Printf("%s\n\n", strings.Repeat("─", 50))
+
+	stepResults := make([]string, 0, len(plan.Steps))
+	for i, step := range plan.Steps {
+		fmt.Printf("📌 步骤 %d/%d: %s\n", i+1, len(plan.Steps), step.Description)
+
+		result, err := a.executeStep(step, i+1, len(plan.Steps))
+		if err != nil {
+			errMsg := fmt.Sprintf("步骤 %d 执行失败: %v", i+1, err)
+			fmt.Printf("❌ %s\n\n", errMsg)
+			stepResults = append(stepResults, errMsg)
+		} else {
+			stepResults = append(stepResults, result)
+			fmt.Printf("✅ 步骤 %d 完成\n\n", i+1)
+		}
+	}
+
+	// 4. 汇总所有步骤结果
+	fmt.Printf("%s\n", strings.Repeat("─", 50))
+	fmt.Printf("📊 所有步骤执行完毕，正在生成最终答案...\n\n")
+
+	summary, err := a.summarizeResults(plan, stepResults)
+	if err != nil {
+		return "", fmt.Errorf("结果汇总失败: %w", err)
+	}
+	return summary, nil
+}
+
+// planPhase 执行计划生成阶段
+// 调用 LLM 分析任务，生成执行计划
+// 返回 nil 表示任务简单，无需计划
+func (a *Agent) planPhase() (*Plan, error) {
+	fmt.Printf("📋 阶段 1: 生成执行计划\n")
+	fmt.Printf("%s\n", strings.Repeat("─", 40))
+
+	// 构建计划生成的提示
+	planPrompt := `请分析用户的任务，判断是否需要制定执行计划。
+
+如果任务简单（单步可完成），直接回复 "SIMPLE"。
+如果任务复杂（需要多步骤），请使用 create_plan 工具创建执行计划。
+
+判断标准：
+- 简单任务：单次查询、单次计算、简单问答
+- 复杂任务：需要多步骤、多工具配合、有依赖关系的任务`
+
+	// 临时添加计划提示到历史（不污染主对话历史）
+	planHistory := make([]Message, len(a.history))
+	copy(planHistory, a.history)
+	planHistory = append(planHistory, Message{
+		Role:    RoleUser,
+		Content: planPrompt,
+	})
+
+	// 只提供 create_plan 工具，让 LLM 决定是否创建计划
+	var planTools []ToolDefinition
+	if tool, ok := a.registry.Get("create_plan"); ok {
+		planTools = append(planTools, tool.Definition)
+	}
+
+	// 调用 LLM
+	response, err := a.llm.Chat(planHistory, planTools)
+	if err != nil {
+		return nil, err
+	}
+
+	return a.parsePlanResponse(response)
+}
+
+// parsePlanResponse 解析 LLM 的计划阶段响应
+// 如果 LLM 调用了 create_plan 工具则返回计划，否则返回 nil（简单任务）
+func (a *Agent) parsePlanResponse(response *Message) (*Plan, error) {
+	// 查找 create_plan 工具调用
+	for _, tc := range response.ToolCalls {
+		if tc.Function.Name != "create_plan" {
+			continue
+		}
+
+		plan, err := a.executeCreatePlan(tc.Function.Arguments)
+		if err != nil {
+			return nil, err
+		}
+
+		fmt.Printf("   ✅ 计划已生成:\n")
+		fmt.Printf("   目标: %s\n", plan.Goal)
+		for i, step := range plan.Steps {
+			fmt.Printf("   %d. %s\n", i+1, step.Description)
+		}
+		fmt.Println()
+		return plan, nil
+	}
+
+	// 没有 create_plan 工具调用 → 任务简单，无需计划
+	fmt.Printf("   → 任务简单，无需计划\n\n")
+	return nil, nil
+}
+
+// executeCreatePlan 解析 create_plan 工具参数并返回计划
+func (a *Agent) executeCreatePlan(argsJSON string) (*Plan, error) {
+	var plan Plan
+	if err := json.Unmarshal([]byte(argsJSON), &plan); err != nil {
+		return nil, fmt.Errorf("计划解析失败: %w", err)
+	}
+
+	// 为每个步骤分配 ID 和初始状态
+	for i := range plan.Steps {
+		plan.Steps[i].ID = i + 1
+		plan.Steps[i].Status = "pending"
+	}
+
+	return &plan, nil
+}
+
+// executeStep 对单个计划步骤执行 ReAct 循环
+func (a *Agent) executeStep(step Step, stepNum, totalSteps int) (string, error) {
+	stepPrompt := fmt.Sprintf("执行计划步骤 %d/%d: %s\n\n请完成这个步骤并报告结果。",
+		stepNum, totalSteps, step.Description)
+	return a.reactLoop(stepPrompt)
+}
+
+// reactLoop 执行 ReAct 循环，最多 MaxTurns 轮
+func (a *Agent) reactLoop(taskPrompt string) (string, error) {
+	a.history = append(a.history, Message{
+		Role:    RoleUser,
+		Content: taskPrompt,
+	})
+
+	for turn := 0; turn < a.config.MaxTurns; turn++ {
+		fmt.Printf("   🔄 推理轮次 %d/%d\n", turn+1, a.config.MaxTurns)
+
+		response, err := a.llm.Chat(a.history, a.getSkillTools())
 		if err != nil {
 			return "", fmt.Errorf("LLM 调用失败: %w", err)
 		}
 
-		// 4. 把 LLM 的回复加入历史
 		a.history = append(a.history, *response)
 
-		// 5. 判断 LLM 是否要使用工具
+		// 没有工具调用 → LLM 认为可以回答了
 		if len(response.ToolCalls) == 0 {
-			// 没有工具调用 → LLM 认为可以直接回答了
-			fmt.Printf("✅ Agent 回复完成 (共 %d 轮推理)\n\n", turn+1)
+			fmt.Printf("   ✅ 推理完成 (共 %d 轮)\n", turn+1)
 			return response.Content, nil
 		}
 
-		// 6. 有工具调用 → 执行每个工具，把结果作为 RoleTool 消息加入历史
-		//    这就是 ReAct 中的 "Act" 和 "Observe"：
-		//    Act = 执行工具，Observe = 把结果喂回 LLM 让它继续推理
-		fmt.Printf("🛠️  LLM 请求调用 %d 个工具:\n", len(response.ToolCalls))
+		// 有工具调用 → 逐个执行
+		fmt.Printf("   🛠️  调用 %d 个工具:\n", len(response.ToolCalls))
 
 		for _, tc := range response.ToolCalls {
-			toolName := tc.Function.Name
-			toolArgs := tc.Function.Arguments // JSON 字符串，需要解析后传给工具
+			fmt.Printf("      → %s(%s)\n", tc.Function.Name, TruncStr(tc.Function.Arguments, 50))
 
-			fmt.Printf("   → 调用 %s(%s)\n", toolName, TruncStr(toolArgs, 60))
-
-			// 根据工具名从注册表查找并执行
-			result, err := a.executeTool(toolName, toolArgs)
-
-			// 构建工具结果消息
-			var resultContent string
+			result, err := a.executeTool(tc.Function.Name, tc.Function.Arguments)
 			if err != nil {
-				resultContent = fmt.Sprintf("工具执行错误: %v", err)
-				fmt.Printf("   ❌ 错误: %v\n", err)
-			} else {
-				resultContent = result
-				fmt.Printf("   📋 结果: %s\n", TruncStr(result, 80))
+				fmt.Printf("      ❌ 错误: %v\n", err)
+				a.history = append(a.history, Message{
+					Role:       RoleTool,
+					Content:    fmt.Sprintf("工具执行错误: %v", err),
+					ToolCallID: tc.ID,
+				})
+				continue
 			}
 
-			// 把工具结果加入对话历史
+			fmt.Printf("      📋 结果: %s\n", TruncStr(result, 60))
 			a.history = append(a.history, Message{
 				Role:       RoleTool,
-				Content:    resultContent,
+				Content:    result,
 				ToolCallID: tc.ID,
 			})
 		}
@@ -165,7 +299,39 @@ func (a *Agent) Run(userInput string) (string, error) {
 	}
 
 	// 超过最大轮数
-	return "抱歉，推理轮次已达上限。", fmt.Errorf("达到最大推理轮数: %d", a.config.MaxTurns)
+	return "", fmt.Errorf("达到最大推理轮数: %d", a.config.MaxTurns)
+}
+
+// summarizeResults 汇总所有步骤的结果，生成最终答案
+func (a *Agent) summarizeResults(plan *Plan, stepResults []string) (string, error) {
+	var sb strings.Builder
+	sb.WriteString("所有执行步骤已完成，请根据以下结果生成最终答案。\n\n")
+	sb.WriteString(fmt.Sprintf("任务目标: %s\n\n", plan.Goal))
+	sb.WriteString("执行结果:\n")
+
+	for i, result := range stepResults {
+		desc := "(未知步骤)"
+		if i < len(plan.Steps) {
+			desc = plan.Steps[i].Description
+		}
+		sb.WriteString(fmt.Sprintf("\n步骤 %d: %s\n", i+1, desc))
+		sb.WriteString(fmt.Sprintf("结果: %s\n", result))
+	}
+
+	sb.WriteString("\n请汇总以上结果，给出完整、清晰的最终答案。")
+
+	a.history = append(a.history, Message{
+		Role:    RoleUser,
+		Content: sb.String(),
+	})
+
+	response, err := a.llm.Chat(a.history, a.getSkillTools())
+	if err != nil {
+		return "", fmt.Errorf("LLM 调用失败: %w", err)
+	}
+
+	a.history = append(a.history, *response)
+	return response.Content, nil
 }
 
 // executeTool 执行一个工具
@@ -239,20 +405,18 @@ func (a *Agent) registerPlanTool() {
 func (a *Agent) setPlan(plan Plan) {
 	steps := make([]Step, len(plan.Steps))
 	for i, s := range plan.Steps {
-		steps[i] = Step{
-			ID:          i + 1,
-			Description: s.Description,
-			Status:      "pending",
-		}
+		steps[i] = Step{ID: i + 1, Description: s.Description, Status: "pending"}
 	}
 	a.currentPlan = &Plan{Goal: plan.Goal, Steps: steps}
 }
 
 // ─── 辅助函数 ──────────────────────────────────────────────────
 
-// GetHistory 获取对话历史（用于调试）
+// GetHistory 获取对话历史的副本（用于调试，不影响内部状态）
 func (a *Agent) GetHistory() []Message {
-	return a.history
+	out := make([]Message, len(a.history))
+	copy(out, a.history)
+	return out
 }
 
 // ClearHistory 清空对话历史（保留 system prompt）
