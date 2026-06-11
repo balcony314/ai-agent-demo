@@ -86,7 +86,7 @@ git commit -m "docs: 更新 README 的快速开始部分"
 ai-agent-demo/
 ├── main.go              # 入口
 ├── cmd/                 # CLI 命令（cobra）
-│   ├── root.go          # 根命令 + 全局 flags
+│   ├── root.go          # 根命令 + 全局 flags + 启动连接检查
 │   ├── chat.go          # chat 子命令
 │   └── version.go       # version 子命令
 ├── agent/               # 核心逻辑

@@ -26,6 +26,7 @@ import (
 	"io"
 	"net/http"
 	"strings"
+	"time"
 )
 
 // ─── LLM 客户端接口 ─────────────────────────────────────────────
@@ -61,6 +62,27 @@ func NewOpenAIClient(apiKey, baseURL, model string) *OpenAIClient {
 	}
 }
 
+// Ping 检查 API 是否可达（启动时调用）
+func (c *OpenAIClient) Ping() error {
+	client := &http.Client{Timeout: 5 * time.Second}
+	req, err := http.NewRequest("GET", c.BaseURL+"/models", nil)
+	if err != nil {
+		return fmt.Errorf("创建请求失败: %w", err)
+	}
+	if c.APIKey != "" {
+		req.Header.Set("Authorization", "Bearer "+c.APIKey)
+	}
+	resp, err := client.Do(req)
+	if err != nil {
+		return fmt.Errorf("无法连接到 %s: %w", c.BaseURL, err)
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return fmt.Errorf("API 返回异常状态码 %d", resp.StatusCode)
+	}
+	return nil
+}
+
 // Chat 实现 LLMClient 接口
 // 请求流程：构建请求体 → 发 HTTP POST → 解析响应 → 返回 Message
 // 请求体包含：model（模型名）、messages（对话历史）、tools（工具定义）
@@ -93,7 +115,7 @@ func (c *OpenAIClient) Chat(messages []Message, tools []ToolDefinition) (*Messag
 		req.Header.Set("Authorization", "Bearer "+c.APIKey)
 	}
 
-	client := &http.Client{}
+	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Do(req)
 	if err != nil {
 		return nil, fmt.Errorf("API 调用失败: %w", err)

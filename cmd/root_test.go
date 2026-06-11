@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"testing"
 
 	"ai-agent-demo/agent"
@@ -106,4 +108,22 @@ func TestPrintHistory_WithToolCalls(t *testing.T) {
 		},
 	}
 	printHistory(history)
+}
+
+// ─── checkAPIConnection 测试 ──────────────────────────────────
+
+func TestCheckAPIConnection_MockClient(t *testing.T) {
+	// MockClient 应该直接跳过检查
+	client := agent.NewMockClient()
+	checkAPIConnection(client) // 不应 panic 或退出
+}
+
+func TestCheckAPIConnection_OpenAIClientSuccess(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := agent.NewOpenAIClient("sk-test", server.URL, "gpt-4o")
+	checkAPIConnection(client) // 不应退出
 }

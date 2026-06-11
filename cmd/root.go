@@ -47,7 +47,7 @@ func Execute() {
 	}
 }
 
-// initLLMClient 根据 flags 创建 LLM 客户端
+// initLLMClient 根据 flags 创建 LLM 客户端（不检查连接）
 func initLLMClient() agent.LLMClient {
 	if mock || apiKey == "" {
 		fmt.Println("🤖 LLM 模式: Mock（教学演示）")
@@ -63,7 +63,24 @@ func initLLMClient() agent.LLMClient {
 		fmt.Printf("   地址: %s\n", baseURL)
 	}
 	fmt.Println()
+
 	return agent.NewOpenAIClient(apiKey, baseURL, model)
+}
+
+// checkAPIConnection 检查 API 连接，不通则退出
+func checkAPIConnection(llm agent.LLMClient) {
+	client, ok := llm.(*agent.OpenAIClient)
+	if !ok {
+		return
+	}
+	fmt.Print("🔗 检查 API 连接... ")
+	if err := client.Ping(); err != nil {
+		fmt.Printf("❌\n\n❌ 无法连接到 API: %v\n", err)
+		fmt.Println("   提示: 如果使用自定义 DNS，尝试 GODEBUG=netdns=cgo")
+		os.Exit(1)
+	}
+	fmt.Println("✅")
+	fmt.Println()
 }
 
 // runREPL 启动交互式聊天循环
@@ -71,7 +88,8 @@ func runREPL(cmd *cobra.Command, args []string) error {
 	printBanner()
 
 	llm := initLLMClient()
-	config := agent.DefaultConfig()
+	checkAPIConnection(llm)
+	config := agent.ConfigWithModel(model)
 	a := agent.NewAgent(llm, config)
 
 	fmt.Printf("🛠️  可用工具: %s\n", strings.Join(a.ListTools(), ", "))

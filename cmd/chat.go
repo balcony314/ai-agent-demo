@@ -35,7 +35,8 @@ func runChat(cmd *cobra.Command, args []string) error {
 	userInput := strings.Join(args, " ")
 
 	llm := initLLMClient()
-	config := agent.DefaultConfig()
+	checkAPIConnection(llm)
+	config := agent.ConfigWithModel(model)
 	a := agent.NewAgent(llm, config)
 
 	reply, err := a.Run(userInput)

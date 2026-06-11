@@ -54,14 +54,14 @@ task --list         # 查看所有可用命令
 ai-agent-demo/
 ├── main.go              # 入口：调用 cmd.Execute()
 ├── cmd/
-│   ├── root.go          # Root 命令 + 全局 flags + 交互式 REPL
+│   ├── root.go          # Root 命令 + 全局 flags + 交互式 REPL + 启动连接检查
 │   ├── chat.go          # chat 子命令：单次提问
 │   └── version.go       # version 子命令：版本信息
 ├── agent/
 │   ├── types.go         # 核心类型：Message, ToolCall, ToolDefinition, Config, LLMClient 接口
-│   ├── tools.go         # 工具注册表 + 4 个内置工具
+│   ├── tools.go         # 工具注册表 + 5 个内置工具
 │   ├── skill.go         # 技能注册表 + 5 个内置技能
-│   ├── llm.go           # LLM 客户端（OpenAI / Mock）
+│   ├── llm.go           # LLM 客户端（OpenAI Ping + Chat / Mock）
 │   └── agent.go         # ReAct 编排循环 + 技能切换
 ├── Taskfile.yml         # Task 构建配置
 └── build/               # 编译输出（gitignore）
@@ -187,7 +187,7 @@ go tool cover -func=coverage.out
 # 生成 HTML 覆盖率报告
 go tool cover -html=coverage.out -o coverage.html
 
-# 当前覆盖率：79.3%（agent 包 88.4%）
+# 当前覆盖率：85.9%（agent 包 97.3%）
 ```
 
 ## 📄 License

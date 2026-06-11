@@ -9,7 +9,10 @@ package agent
 // 本文件定义了 Agent 运行所需的所有数据结构。
 // 理解这些类型是理解整个 Agent 的基础。
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+)
 
 // ─── 消息类型 ───────────────────────────────────────────────────
 
@@ -107,4 +110,13 @@ func DefaultConfig() Config {
 请用中文回复。`,
 		MaxTurns: 10,
 	}
+}
+
+// ConfigWithModel 返回带模型信息的配置
+func ConfigWithModel(model string) Config {
+	config := DefaultConfig()
+	if model != "" {
+		config.SystemPrompt += fmt.Sprintf("\n\n你当前使用的模型是 %s。", model)
+	}
+	return config
 }

@@ -1,6 +1,8 @@
 package agent
 
 import (
+	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
 )
@@ -175,5 +177,185 @@ func TestNewOpenAIClient_CustomValues(t *testing.T) {
 	}
 	if client.Model != "qwen2" {
 		t.Errorf("Model = %q, 期望 qwen2", client.Model)
+	}
+}
+
+// ─── Ping 测试 ────────────────────────────────────────────────
+
+func TestPing_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/models" {
+			t.Errorf("请求路径 = %q, 期望 /models", r.URL.Path)
+		}
+		if r.Header.Get("Authorization") != "Bearer sk-test" {
+			t.Errorf("Authorization = %q, 期望 Bearer sk-test", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
+	if err := client.Ping(); err != nil {
+		t.Errorf("Ping 应成功, 实际错误: %v", err)
+	}
+}
+
+func TestPing_NoAPIKey(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Header.Get("Authorization") != "" {
+			t.Errorf("无 API Key 时不应发送 Authorization, 实际: %q", r.Header.Get("Authorization"))
+		}
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient("", server.URL, "gpt-4o")
+	if err := client.Ping(); err != nil {
+		t.Errorf("Ping 应成功, 实际错误: %v", err)
+	}
+}
+
+func TestPing_ServerError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
+	err := client.Ping()
+	if err == nil {
+		t.Error("Ping 500 应返回错误")
+	}
+}
+
+func TestPing_Unreachable(t *testing.T) {
+	client := NewOpenAIClient("sk-test", "http://127.0.0.1:1", "gpt-4o")
+	err := client.Ping()
+	if err == nil {
+		t.Error("Ping 不可达地址应返回错误")
+	}
+}
+
+// ─── OpenAIClient.Chat 测试 ───────────────────────────────────
+
+func TestOpenAIClient_Chat_Success(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// 验证请求
+		if r.Header.Get("Authorization") != "Bearer sk-test" {
+			t.Errorf("Authorization = %q, 期望 Bearer sk-test", r.Header.Get("Authorization"))
+		}
+		if r.Header.Get("Content-Type") != "application/json" {
+			t.Errorf("Content-Type = %q, 期望 application/json", r.Header.Get("Content-Type"))
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"choices": [{
+				"message": {
+					"role": "assistant",
+					"content": "你好！"
+				}
+			}]
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
+	messages := []Message{
+		{Role: RoleSystem, Content: "你是助手"},
+		{Role: RoleUser, Content: "你好"},
+	}
+
+	resp, err := client.Chat(messages, nil)
+	if err != nil {
+		t.Fatalf("Chat 错误: %v", err)
+	}
+	if resp.Content != "你好！" {
+		t.Errorf("Content = %q, 期望 %q", resp.Content, "你好！")
+	}
+	if resp.Role != RoleAssistant {
+		t.Errorf("Role = %q, 期望 %q", resp.Role, RoleAssistant)
+	}
+}
+
+func TestOpenAIClient_Chat_WithTools(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{
+			"choices": [{
+				"message": {
+					"role": "assistant",
+					"content": "",
+					"tool_calls": [{
+						"id": "call_1",
+						"type": "function",
+						"function": {
+							"name": "search",
+							"arguments": "{\"query\":\"test\"}"
+						}
+					}]
+				}
+			}]
+		}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
+	messages := []Message{{Role: RoleUser, Content: "搜索一下"}}
+	tools := []ToolDefinition{
+		{Type: "function", Function: FunctionSchema{Name: "search", Description: "搜索"}},
+	}
+
+	resp, err := client.Chat(messages, tools)
+	if err != nil {
+		t.Fatalf("Chat 错误: %v", err)
+	}
+	if len(resp.ToolCalls) != 1 {
+		t.Fatalf("ToolCalls 长度 = %d, 期望 1", len(resp.ToolCalls))
+	}
+	if resp.ToolCalls[0].Function.Name != "search" {
+		t.Errorf("工具名 = %q, 期望 search", resp.ToolCalls[0].Function.Name)
+	}
+}
+
+func TestOpenAIClient_Chat_HTTPError(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		w.Write([]byte(`{"error": "internal error"}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
+	messages := []Message{{Role: RoleUser, Content: "你好"}}
+
+	_, err := client.Chat(messages, nil)
+	if err == nil {
+		t.Error("HTTP 500 应返回错误")
+	}
+}
+
+func TestOpenAIClient_Chat_EmptyChoices(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Write([]byte(`{"choices": []}`))
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
+	messages := []Message{{Role: RoleUser, Content: "你好"}}
+
+	_, err := client.Chat(messages, nil)
+	if err == nil {
+		t.Error("空 choices 应返回错误")
+	}
+}
+
+func TestOpenAIClient_Chat_Unreachable(t *testing.T) {
+	client := NewOpenAIClient("sk-test", "http://127.0.0.1:1", "gpt-4o")
+	messages := []Message{{Role: RoleUser, Content: "你好"}}
+
+	_, err := client.Chat(messages, nil)
+	if err == nil {
+		t.Error("不可达地址应返回错误")
 	}
 }

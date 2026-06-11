@@ -32,19 +32,21 @@ go vet ./...                                      # 静态检查
 ```
 main.go           → 入口：调用 cmd.Execute()
 cmd/
-  root.go         → Root 命令 + 全局 flags + 交互式 REPL
+  root.go         → Root 命令 + 全局 flags + 交互式 REPL + 启动连接检查
   chat.go         → chat 子命令：单次提问（非交互式）
   version.go      → version 子命令：版本信息
 agent/
-  types.go        → 核心类型：Message, ToolCall, ToolDefinition, Config, LLMClient 接口
+  types.go        → 核心类型：Message, ToolCall, ToolDefinition, Config, LLMClient 接口 + ConfigWithModel
   tools.go        → ToolRegistry（map 实现）+ RegisterBuiltinTools() 注册 5 个内置工具
   skill.go        → SkillRegistry + RegisterBuiltinSkills() 注册 5 个内置技能
-  llm.go          → OpenAIClient（真实 /v1/chat/completions）+ MockClient（演示用）
+  llm.go          → OpenAIClient（Ping + /v1/chat/completions）+ MockClient（演示用）
   agent.go        → Agent.Run() —— ReAct 编排循环 + Skill 切换 + Plan 管理
 ```
 
 关键抽象：
 - **`LLMClient` 接口**（`Chat` 方法）—— 可在 `OpenAIClient` 和 `MockClient` 之间切换
+- **`OpenAIClient.Ping()`** —— 启动时检查 API 可达性，带 Authorization header，失败则退出
+- **`ConfigWithModel(model)`** —— 将模型名注入系统提示词，让 LLM 知道自己使用的模型
 - **`ToolRegistry`** —— `map[string]Tool`，提供 `Register`/`Get`/`Definitions`；每个 `Tool` 由 JSON Schema 的 `ToolDefinition` + `Execute` 函数组成
 - **`Message`** —— role + content + 可选的 tool_calls/tool_call_id，对齐 OpenAI chat 格式
 

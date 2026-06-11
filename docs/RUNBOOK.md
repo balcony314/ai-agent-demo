@@ -48,8 +48,11 @@ GOOS=darwin GOARCH=arm64 go build -o build/ai-agent-mac .
 程序运行时会输出以下信息：
 
 ```
-🤖 LLM 模式: Mock（教学演示）
-   提示: 设置 --api-key 参数可连接真实 LLM API
+🤖 LLM 模式: 真实 API
+   模型: gpt-4o
+   地址: https://api.openai.com/v1
+
+🔗 检查 API 连接... ✅
 
 📝 用户: 你好
 🔄 推理轮次 1/10
@@ -65,7 +68,22 @@ GOOS=darwin GOARCH=arm64 go build -o build/ai-agent-mac .
 
 ## 常见问题
 
-### 1. API Key 无效
+### 1. 启动时连接检查失败
+
+**症状**：
+```
+🔗 检查 API 连接... ❌
+
+❌ 无法连接到 API: ...
+```
+
+**解决**：
+- 检查 API Key 和 base-url 是否正确
+- 确认域名可达：`ping <hostname>`
+- 如果 ping 通但 Go 报 `no such host`，尝试：`GODEBUG=netdns=cgo ./build/ai-agent ...`
+- 如果返回 401，检查 API Key 是否有效
+
+### 2. API Key 无效
 
 **症状**：
 ```
@@ -77,7 +95,27 @@ GOOS=darwin GOARCH=arm64 go build -o build/ai-agent-mac .
 - 验证 API Key 是否有足够额度
 - 确认 API 地址是否正确
 
-### 2. 连接超时
+### 3. DNS 解析失败（Go 特有）
+
+**症状**：
+```
+❌ 无法连接到 API: ... dial tcp: lookup xxx: no such host
+```
+
+但 `ping` 命令可以正常解析该域名。
+
+**原因**：Go 默认使用纯 Go DNS 解析器，与系统解析器行为不一致。
+
+**解决**：
+```bash
+# 方法 1：使用系统 DNS 解析器
+GODEBUG=netdns=cgo ./build/ai-agent --api-key ... --base-url ...
+
+# 方法 2：在 /etc/hosts 中添加域名映射
+echo "1.2.3.4 your-api-host.com" | sudo tee -a /etc/hosts
+```
+
+### 4. 连接超时
 
 **症状**：
 ```
@@ -89,7 +127,7 @@ GOOS=darwin GOARCH=arm64 go build -o build/ai-agent-mac .
 - 确认 API 地址可达
 - 检查防火墙设置
 
-### 3. Ollama 连接失败
+### 5. Ollama 连接失败
 
 **症状**：
 ```
@@ -101,7 +139,7 @@ GOOS=darwin GOARCH=arm64 go build -o build/ai-agent-mac .
 - 检查端口：`curl http://localhost:11434`
 - 确认模型已下载：`ollama pull qwen2`
 
-### 4. 工具执行失败
+### 6. 工具执行失败
 
 **症状**：
 ```
@@ -175,7 +213,8 @@ task build
 
 1. 实现 `LLMClient` 接口
 2. 在 `cmd/root.go` 的 `initLLMClient()` 中添加判断
-3. 测试连接
+3. 如果需要启动时连接检查，实现 `Ping()` 方法并在 `checkAPIConnection()` 中处理
+4. 测试连接
 
 ### 添加新工具
 
