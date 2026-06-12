@@ -13,3 +13,7 @@ coverage.html
 .vscode/
 *.swp
 *.swo
+
+# Claude Code
+.agents/
+skills-lock.json
