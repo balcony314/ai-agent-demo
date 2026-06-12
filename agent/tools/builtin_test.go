@@ -1,106 +1,10 @@
-package agent
+package tools
 
 import (
 	"encoding/json"
 	"math"
 	"testing"
 )
-
-// ─── ToolRegistry 测试 ─────────────────────────────────────────
-
-func TestToolRegistry_RegisterAndGet(t *testing.T) {
-	reg := NewToolRegistry()
-
-	tool := Tool{
-		Definition: ToolDefinition{
-			Type: "function",
-			Function: FunctionSchema{
-				Name:        "test_tool",
-				Description: "测试工具",
-			},
-		},
-		Execute: func(args json.RawMessage) (string, error) {
-			return "ok", nil
-		},
-	}
-
-	reg.Register(tool)
-
-	got, ok := reg.Get("test_tool")
-	if !ok {
-		t.Fatal("Get 返回 false，期望找到已注册的工具")
-	}
-	if got.Definition.Function.Name != "test_tool" {
-		t.Errorf("工具名 = %q, 期望 %q", got.Definition.Function.Name, "test_tool")
-	}
-}
-
-func TestToolRegistry_GetNotFound(t *testing.T) {
-	reg := NewToolRegistry()
-	_, ok := reg.Get("nonexistent")
-	if ok {
-		t.Error("Get 返回 true，期望找不到未注册的工具")
-	}
-}
-
-func TestToolRegistry_Definitions(t *testing.T) {
-	reg := NewToolRegistry()
-	reg.Register(Tool{
-		Definition: ToolDefinition{
-			Type: "function",
-			Function: FunctionSchema{Name: "a", Description: "tool a"},
-		},
-	})
-	reg.Register(Tool{
-		Definition: ToolDefinition{
-			Type: "function",
-			Function: FunctionSchema{Name: "b", Description: "tool b"},
-		},
-	})
-
-	defs := reg.Definitions()
-	if len(defs) != 2 {
-		t.Errorf("Definitions 长度 = %d, 期望 2", len(defs))
-	}
-}
-
-func TestToolRegistry_Names(t *testing.T) {
-	reg := NewToolRegistry()
-	reg.Register(Tool{
-		Definition: ToolDefinition{
-			Function: FunctionSchema{Name: "alpha"},
-		},
-	})
-	reg.Register(Tool{
-		Definition: ToolDefinition{
-			Function: FunctionSchema{Name: "beta"},
-		},
-	})
-
-	names := reg.Names()
-	if len(names) != 2 {
-		t.Errorf("Names 长度 = %d, 期望 2", len(names))
-	}
-	nameSet := map[string]bool{}
-	for _, n := range names {
-		nameSet[n] = true
-	}
-	if !nameSet["alpha"] || !nameSet["beta"] {
-		t.Errorf("Names = %v, 期望包含 alpha 和 beta", names)
-	}
-}
-
-func TestRegisterBuiltinTools(t *testing.T) {
-	reg := NewToolRegistry()
-	RegisterBuiltinTools(reg)
-
-	expected := []string{"calculator", "current_time", "search", "text_transform"}
-	for _, name := range expected {
-		if _, ok := reg.Get(name); !ok {
-			t.Errorf("内置工具 %q 未注册", name)
-		}
-	}
-}
 
 // ─── evaluateExpression 测试 ───────────────────────────────────
 
@@ -199,7 +103,7 @@ func TestEvaluateExpression_SqrtWithExpression(t *testing.T) {
 		t.Fatalf("sqrt(4+5) 错误: %v", err)
 	}
 	// sqrt(4) + 5 = 2 + 5 = 7 (因为 evaluateSimple 会解析 4+5 为 4)
-	// 实际上 sqrt(4+5) 会调用 evaluateSimple("4+5")，然后返回 4+5=9，然后 sqrt(9)=3
+	// 实际上 sqrt(4+5) 会调用 evaluateSimple("4+5"), 然后返回 4+5=9, 然后 sqrt(9)=3
 	if math.Abs(got-3) > 1e-9 {
 		t.Errorf("sqrt(4+5) = %g, 期望 3", got)
 	}
@@ -364,29 +268,6 @@ func TestMockSearch(t *testing.T) {
 			result := mockSearch(tt.query)
 			if result == "" {
 				t.Error("mockSearch 不应返回空")
-			}
-		})
-	}
-}
-
-// ─── TruncStr 测试 ────────────────────────────────────────────
-
-func TestTruncStr(t *testing.T) {
-	tests := []struct {
-		s      string
-		maxLen int
-		want   string
-	}{
-		{"hello", 10, "hello"},
-		{"hello world", 5, "hello..."},
-		{"", 5, ""},
-		{"abc", 3, "abc"},
-	}
-	for _, tt := range tests {
-		t.Run(tt.s, func(t *testing.T) {
-			got := TruncStr(tt.s, tt.maxLen)
-			if got != tt.want {
-				t.Errorf("TruncStr(%q, %d) = %q, 期望 %q", tt.s, tt.maxLen, got, tt.want)
 			}
 		})
 	}

@@ -90,19 +90,26 @@ ai-agent-demo/
 │   ├── chat.go          # chat 子命令
 │   └── version.go       # version 子命令
 ├── agent/               # 核心逻辑
-│   ├── types.go         # 类型定义
-│   ├── tools.go         # 工具注册表
-│   ├── file_tools.go    # 文件操作工具（8个）
-│   ├── exec_tools.go    # 命令执行工具（2个）
-│   ├── skill.go         # 技能注册表
-│   ├── llm.go           # LLM 客户端
 │   ├── agent.go         # Plan + ReAct 两阶段编排
-│   └── exec/            # 命令执行核心逻辑
-│       ├── config.go    # 执行配置
-│       ├── security.go  # 安全防护
-│       ├── executor.go  # 命令执行器
-│       ├── audit.go     # 审计日志
-│       └── process.go   # 进程管理
+│   ├── llm.go           # LLM 客户端
+│   ├── doc.go           # 包文档
+│   ├── types/           # 核心类型定义
+│   │   └── types.go     # Message, Tool, Config, Role 等
+│   ├── tools/           # 工具系统
+│   │   ├── registry.go  # ToolRegistry
+│   │   ├── builtin.go   # 内置工具（calculator, search 等）
+│   │   ├── file_utils.go # 文件工具通用函数
+│   │   ├── file_read.go # 只读文件工具
+│   │   ├── file_write.go # 写入文件工具
+│   │   ├── exec.go      # 命令执行工具注册
+│   │   └── exec/        # 命令执行核心逻辑
+│   │       ├── config.go    # 执行配置
+│   │       ├── security.go  # 安全防护
+│   │       ├── executor.go  # 命令执行器
+│   │       ├── audit.go     # 审计日志
+│   │       └── process.go   # 进程管理
+│   └── skills/          # 技能系统
+│       └── registry.go  # SkillRegistry + 内置技能
 ├── docs/                # 文档
 ├── Taskfile.yml         # 构建配置
 └── build/               # 编译输出
@@ -112,28 +119,28 @@ ai-agent-demo/
 
 ### 添加工具
 
-1. 在 `agent/tools.go` 的 `RegisterBuiltinTools()` 中注册
+1. 在 `agent/tools/builtin.go` 的 `RegisterBuiltinTools()` 中注册
 2. 提供 `ToolDefinition`（含 JSON Schema）和 `Execute` 函数
-3. 在 `agent/tools_test.go` 中添加测试
+3. 在 `agent/tools/builtin_test.go` 中添加测试
 
 ### 添加文件操作工具
 
-文件操作工具在 `agent/file_tools.go` 中实现：
+文件操作工具在 `agent/tools/` 目录下实现：
 
 1. 创建工厂函数（如 `newMyTool()`）返回 `Tool` 实例
-2. 在 `RegisterFileTools()` 中注册
+2. 在 `agent/tools/file_utils.go` 的 `RegisterFileTools()` 中注册
 3. 使用 `validatePath()` 验证路径安全
-4. 在 `agent/file_tools_test.go` 中添加测试
+4. 在对应的 `*_test.go` 文件中添加测试
 
 ### 添加命令执行工具
 
-命令执行工具在 `agent/exec_tools.go` 和 `agent/exec/` 包中实现：
+命令执行工具在 `agent/tools/exec/` 包中实现：
 
-1. 核心逻辑在 `agent/exec/` 包中（独立于 agent 包，便于测试）
-2. 工具注册在 `agent/exec_tools.go` 中（桥接 exec 包到 ToolRegistry）
+1. 核心逻辑在 `agent/tools/exec/` 包中（独立于 tools 包，便于测试）
+2. 工具注册在 `agent/tools/exec.go` 中（桥接 exec 包到 ToolRegistry）
 3. 使用单例模式共享 Executor 实例
 4. 安全防护：命令黑名单、路径访问控制、敏感操作检测
-5. 在 `agent/exec_tools_test.go` 和 `agent/exec/*_test.go` 中添加测试
+5. 在 `agent/tools/exec_test.go` 和 `agent/tools/exec/*_test.go` 中添加测试
 
 环境变量配置：
 - `EXEC_TIMEOUT` - 命令超时时间（秒，默认 30）
@@ -142,9 +149,9 @@ ai-agent-demo/
 
 ### 添加技能
 
-1. 在 `agent/skill.go` 的 `RegisterBuiltinSkills()` 中注册
+1. 在 `agent/skills/registry.go` 的 `RegisterBuiltinSkills()` 中注册
 2. 提供 `Name`、`Description`、`SystemPrompt` 和可选的 `Tools` 列表
-3. 在 `agent/skill_test.go` 中添加测试
+3. 在 `agent/skills/registry_test.go` 中添加测试
 
 ### 添加 CLI 命令
 

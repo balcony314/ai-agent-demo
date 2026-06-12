@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"ai-agent-demo/agent/types"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -11,11 +12,11 @@ import (
 
 // scriptedClient 按预设脚本返回响应的 mock LLM
 type scriptedClient struct {
-	responses []*Message // 预设的响应队列
-	callIdx   int        // 当前调用索引
+	responses []*types.Message // 预设的响应队列
+	callIdx   int             // 当前调用索引
 }
 
-func (c *scriptedClient) Chat(messages []Message, tools []ToolDefinition) (*Message, error) {
+func (c *scriptedClient) Chat(messages []types.Message, tools []types.ToolDefinition) (*types.Message, error) {
 	if c.callIdx >= len(c.responses) {
 		return nil, fmt.Errorf("scriptedClient: 预设响应已用完 (callIdx=%d)", c.callIdx)
 	}
@@ -27,7 +28,7 @@ func (c *scriptedClient) Chat(messages []Message, tools []ToolDefinition) (*Mess
 // errorClient 总是返回错误的 mock LLM
 type errorClient struct{}
 
-func (c *errorClient) Chat(messages []Message, tools []ToolDefinition) (*Message, error) {
+func (c *errorClient) Chat(messages []types.Message, tools []types.ToolDefinition) (*types.Message, error) {
 	return nil, fmt.Errorf("模拟 LLM 错误")
 }
 
@@ -37,15 +38,15 @@ func TestAgentRun_DirectReply(t *testing.T) {
 	// LLM 直接回复文本，不调用工具
 	// 需要两个响应：1. planPhase 返回 SIMPLE 2. reactLoop 直接回复
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// planPhase: 判断为简单任务
-			{Role: RoleAssistant, Content: "SIMPLE"},
+			{Role: types.RoleAssistant, Content: "SIMPLE"},
 			// reactLoop: 直接回复
-			{Role: RoleAssistant, Content: "你好！"},
+			{Role: types.RoleAssistant, Content: "你好！"},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	result, err := agent.Run("你好")
 	if err != nil {
 		t.Fatalf("Run 错误: %v", err)
@@ -58,18 +59,18 @@ func TestAgentRun_DirectReply(t *testing.T) {
 func TestAgentRun_ToolCallThenReply(t *testing.T) {
 	// planPhase 判断为简单任务，reactLoop 中 LLM 调用 search 工具后回复
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// planPhase: 判断为简单任务
-			{Role: RoleAssistant, Content: "SIMPLE"},
+			{Role: types.RoleAssistant, Content: "SIMPLE"},
 			// reactLoop 第一轮：LLM 决定调用 search
 			{
-				Role:    RoleAssistant,
+				Role:    types.RoleAssistant,
 				Content: "",
-				ToolCalls: []ToolCall{
+				ToolCalls: []types.ToolCall{
 					{
 						ID:   "call_1",
 						Type: "function",
-						Function: FunctionCall{
+						Function: types.FunctionCall{
 							Name:      "search",
 							Arguments: `{"query":"golang"}`,
 						},
@@ -77,11 +78,11 @@ func TestAgentRun_ToolCallThenReply(t *testing.T) {
 				},
 			},
 			// reactLoop 第二轮：LLM 看到工具结果后回复
-			{Role: RoleAssistant, Content: "Go 是 Google 开发的编程语言。"},
+			{Role: types.RoleAssistant, Content: "Go 是 Google 开发的编程语言。"},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	result, err := agent.Run("什么是 Go 语言？")
 	if err != nil {
 		t.Fatalf("Run 错误: %v", err)
@@ -97,8 +98,8 @@ func TestAgentRun_ToolCallThenReply(t *testing.T) {
 		t.Errorf("历史长度 = %d, 期望 6", len(history))
 	}
 	// 第4条应是 tool result
-	if history[4].Role != RoleTool {
-		t.Errorf("历史[4] role = %q, 期望 %q", history[4].Role, RoleTool)
+	if history[4].Role != types.RoleTool {
+		t.Errorf("历史[4] role = %q, 期望 %q", history[4].Role, types.RoleTool)
 	}
 	if history[4].ToolCallID != "call_1" {
 		t.Errorf("历史[4] ToolCallID = %q, 期望 %q", history[4].ToolCallID, "call_1")
@@ -108,15 +109,15 @@ func TestAgentRun_ToolCallThenReply(t *testing.T) {
 func TestAgentRun_MultipleToolCalls(t *testing.T) {
 	// LLM 连续调用多个工具
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// 第一轮：调用 calculator
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:   "call_calc",
 						Type: "function",
-						Function: FunctionCall{
+						Function: types.FunctionCall{
 							Name:      "calculator",
 							Arguments: `{"expression":"2+3"}`,
 						},
@@ -125,12 +126,12 @@ func TestAgentRun_MultipleToolCalls(t *testing.T) {
 			},
 			// 第二轮：调用 search
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:   "call_search",
 						Type: "function",
-						Function: FunctionCall{
+						Function: types.FunctionCall{
 							Name:      "search",
 							Arguments: `{"query":"agent"}`,
 						},
@@ -138,11 +139,11 @@ func TestAgentRun_MultipleToolCalls(t *testing.T) {
 				},
 			},
 			// 第三轮：最终回复
-			{Role: RoleAssistant, Content: "计算和搜索都完成了。"},
+			{Role: types.RoleAssistant, Content: "计算和搜索都完成了。"},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	result, err := agent.Run("帮我算 2+3 并搜索 agent")
 	if err != nil {
 		t.Fatalf("Run 错误: %v", err)
@@ -154,7 +155,7 @@ func TestAgentRun_MultipleToolCalls(t *testing.T) {
 
 func TestAgentRun_LLMError(t *testing.T) {
 	client := &errorClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	_, err := agent.Run("你好")
 	if err == nil {
@@ -169,17 +170,17 @@ func TestAgentRun_LLMError(t *testing.T) {
 func TestAgentRun_UnknownTool(t *testing.T) {
 	// LLM 调用一个不存在的工具
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// planPhase: 判断为简单任务
-			{Role: RoleAssistant, Content: "SIMPLE"},
+			{Role: types.RoleAssistant, Content: "SIMPLE"},
 			// reactLoop: LLM 调用不存在的工具
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:   "call_bad",
 						Type: "function",
-						Function: FunctionCall{
+						Function: types.FunctionCall{
 							Name:      "nonexistent_tool",
 							Arguments: `{}`,
 						},
@@ -187,11 +188,11 @@ func TestAgentRun_UnknownTool(t *testing.T) {
 				},
 			},
 			// reactLoop: Agent 会把工具错误喂回 LLM，LLM 再回复
-			{Role: RoleAssistant, Content: "抱歉，工具调用失败了。"},
+			{Role: types.RoleAssistant, Content: "抱歉，工具调用失败了。"},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	result, err := agent.Run("测试")
 	if err != nil {
 		t.Fatalf("Run 错误: %v", err)
@@ -201,8 +202,8 @@ func TestAgentRun_UnknownTool(t *testing.T) {
 	// 注意：planPhase 使用临时历史，不会修改 a.history
 	history := agent.GetHistory()
 	toolMsg := history[4] // system + user(原始输入) + user(reactLoop任务提示) + assistant(tool_call) + tool_result
-	if toolMsg.Role != RoleTool {
-		t.Errorf("工具结果角色 = %q, 期望 %q", toolMsg.Role, RoleTool)
+	if toolMsg.Role != types.RoleTool {
+		t.Errorf("工具结果角色 = %q, 期望 %q", toolMsg.Role, types.RoleTool)
 	}
 	if !strings.Contains(toolMsg.Content, "未知工具") {
 		t.Errorf("工具错误信息 = %q, 期望包含 '未知工具'", toolMsg.Content)
@@ -213,19 +214,19 @@ func TestAgentRun_UnknownTool(t *testing.T) {
 func TestAgentRun_MaxTurnsExceeded(t *testing.T) {
 	// LLM 每轮都调用工具，永不给出最终回复
 	// 需要先通过 planPhase
-	responses := []*Message{
+	responses := []*types.Message{
 		// planPhase: 判断为简单任务
-		{Role: RoleAssistant, Content: "SIMPLE"},
+		{Role: types.RoleAssistant, Content: "SIMPLE"},
 	}
 	// 添加足够多的工具调用响应
 	for i := 0; i < 20; i++ {
-		responses = append(responses, &Message{
-			Role: RoleAssistant,
-			ToolCalls: []ToolCall{
+		responses = append(responses, &types.Message{
+			Role: types.RoleAssistant,
+			ToolCalls: []types.ToolCall{
 				{
 					ID:   fmt.Sprintf("call_%d", i),
 					Type: "function",
-					Function: FunctionCall{
+					Function: types.FunctionCall{
 						Name:      "calculator",
 						Arguments: `{"expression":"1+1"}`,
 					},
@@ -238,7 +239,7 @@ func TestAgentRun_MaxTurnsExceeded(t *testing.T) {
 		responses: responses,
 	}
 
-	config := DefaultConfig()
+	config := types.DefaultConfig()
 	config.MaxTurns = 3
 	agent := NewAgent(client, config)
 
@@ -258,7 +259,7 @@ func TestAgentRun_MaxTurnsExceeded(t *testing.T) {
 
 func TestAgentExecuteTool(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	// 正常执行
 	result, err := agent.executeTool("calculator", `{"expression":"2+3"}`)
@@ -280,7 +281,7 @@ func TestAgentExecuteTool(t *testing.T) {
 
 func TestAgentSwitchSkill(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	if agent.CurrentSkill() != "general" {
 		t.Fatalf("默认技能 = %q, 期望 %q", agent.CurrentSkill(), "general")
@@ -304,14 +305,14 @@ func TestAgentSwitchSkill(t *testing.T) {
 
 func TestAgentSwitchSkill_ClearsHistory(t *testing.T) {
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// planPhase: 判断为简单任务
-			{Role: RoleAssistant, Content: "SIMPLE"},
+			{Role: types.RoleAssistant, Content: "SIMPLE"},
 			// reactLoop: 回复
-			{Role: RoleAssistant, Content: "回复"},
+			{Role: types.RoleAssistant, Content: "回复"},
 		},
 	}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	// 先对话一轮
 	agent.Run("你好")
@@ -332,7 +333,7 @@ func TestAgentSwitchSkill_ClearsHistory(t *testing.T) {
 
 func TestAgentGetSkillTools_AllTools(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	// general 技能：使用全部工具（calculator, current_time, search, text_transform, create_plan, 8个文件工具, 2个执行工具）
 	defs := agent.getSkillTools()
@@ -343,7 +344,7 @@ func TestAgentGetSkillTools_AllTools(t *testing.T) {
 
 func TestAgentGetSkillTools_FilteredTools(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	agent.SwitchSkill("coder") // 只有 calculator, text_transform
 	defs := agent.getSkillTools()
@@ -364,14 +365,14 @@ func TestAgentGetSkillTools_FilteredTools(t *testing.T) {
 
 func TestAgentClearHistory(t *testing.T) {
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// planPhase: 判断为简单任务
-			{Role: RoleAssistant, Content: "SIMPLE"},
+			{Role: types.RoleAssistant, Content: "SIMPLE"},
 			// reactLoop: 回复
-			{Role: RoleAssistant, Content: "回复"},
+			{Role: types.RoleAssistant, Content: "回复"},
 		},
 	}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	agent.Run("你好")
 
 	if len(agent.GetHistory()) < 2 {
@@ -382,8 +383,8 @@ func TestAgentClearHistory(t *testing.T) {
 	if len(agent.GetHistory()) != 1 {
 		t.Errorf("清空后历史长度 = %d, 期望 1", len(agent.GetHistory()))
 	}
-	if agent.GetHistory()[0].Role != RoleSystem {
-		t.Errorf("清空后第一条消息角色 = %q, 期望 %q", agent.GetHistory()[0].Role, RoleSystem)
+	if agent.GetHistory()[0].Role != types.RoleSystem {
+		t.Errorf("清空后第一条消息角色 = %q, 期望 %q", agent.GetHistory()[0].Role, types.RoleSystem)
 	}
 }
 
@@ -391,7 +392,7 @@ func TestAgentClearHistory(t *testing.T) {
 
 func TestAgentListTools(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	// general 技能：Tools 为空，返回全部工具
 	tools := agent.ListTools()
@@ -411,11 +412,11 @@ func TestAgentListTools(t *testing.T) {
 
 func TestAgentListSkills(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
-	skills := agent.ListSkills()
-	if len(skills) != 5 {
-		t.Errorf("ListSkills 长度 = %d, 期望 5", len(skills))
+	skillsList := agent.ListSkills()
+	if len(skillsList) != 5 {
+		t.Errorf("ListSkills 长度 = %d, 期望 5", len(skillsList))
 	}
 }
 
@@ -423,17 +424,17 @@ func TestAgentListSkills(t *testing.T) {
 
 func TestMockClient_DirectReply(t *testing.T) {
 	client := NewMockClient()
-	messages := []Message{
-		{Role: RoleSystem, Content: "你是助手"},
-		{Role: RoleUser, Content: "你好"},
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "你是助手"},
+		{Role: types.RoleUser, Content: "你好"},
 	}
 
 	resp, err := client.Chat(messages, nil)
 	if err != nil {
 		t.Fatalf("Chat 错误: %v", err)
 	}
-	if resp.Role != RoleAssistant {
-		t.Errorf("角色 = %q, 期望 %q", resp.Role, RoleAssistant)
+	if resp.Role != types.RoleAssistant {
+		t.Errorf("角色 = %q, 期望 %q", resp.Role, types.RoleAssistant)
 	}
 	if resp.Content == "" {
 		t.Error("回复内容不应为空")
@@ -442,12 +443,12 @@ func TestMockClient_DirectReply(t *testing.T) {
 
 func TestMockClient_ToolCall(t *testing.T) {
 	client := NewMockClient()
-	messages := []Message{
-		{Role: RoleSystem, Content: "你是助手"},
-		{Role: RoleUser, Content: "搜索一下"},
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "你是助手"},
+		{Role: types.RoleUser, Content: "搜索一下"},
 	}
-	tools := []ToolDefinition{
-		{Type: "function", Function: FunctionSchema{Name: "search"}},
+	tools := []types.ToolDefinition{
+		{Type: "function", Function: types.FunctionSchema{Name: "search"}},
 	}
 
 	resp, err := client.Chat(messages, tools)
@@ -461,10 +462,10 @@ func TestMockClient_ToolCall(t *testing.T) {
 
 func TestMockClient_SummarizeToolResult(t *testing.T) {
 	client := NewMockClient()
-	messages := []Message{
-		{Role: RoleSystem, Content: "你是助手"},
-		{Role: RoleUser, Content: "搜索"},
-		{Role: RoleTool, Content: "搜索结果内容"},
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "你是助手"},
+		{Role: types.RoleUser, Content: "搜索"},
+		{Role: types.RoleTool, Content: "搜索结果内容"},
 	}
 
 	resp, err := client.Chat(messages, nil)
@@ -480,7 +481,7 @@ func TestMockClient_SummarizeToolResult(t *testing.T) {
 
 func TestNewAgent_DefaultConfig(t *testing.T) {
 	client := &scriptedClient{}
-	config := DefaultConfig()
+	config := types.DefaultConfig()
 	agent := NewAgent(client, config)
 
 	if agent.CurrentSkill() != "general" {
@@ -491,8 +492,8 @@ func TestNewAgent_DefaultConfig(t *testing.T) {
 	if len(history) != 1 {
 		t.Errorf("初始历史长度 = %d, 期望 1", len(history))
 	}
-	if history[0].Role != RoleSystem {
-		t.Errorf("初始消息角色 = %q, 期望 %q", history[0].Role, RoleSystem)
+	if history[0].Role != types.RoleSystem {
+		t.Errorf("初始消息角色 = %q, 期望 %q", history[0].Role, types.RoleSystem)
 	}
 }
 
@@ -500,26 +501,26 @@ func TestNewAgent_DefaultConfig(t *testing.T) {
 
 func TestAgentRun_EmptyToolArgs(t *testing.T) {
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// planPhase: 判断为简单任务
-			{Role: RoleAssistant, Content: "SIMPLE"},
+			{Role: types.RoleAssistant, Content: "SIMPLE"},
 			// reactLoop: 调用 current_time 工具
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:       "call_1",
 						Type:     "function",
-						Function: FunctionCall{Name: "current_time", Arguments: `{}`},
+						Function: types.FunctionCall{Name: "current_time", Arguments: `{}`},
 					},
 				},
 			},
 			// reactLoop: 回复
-			{Role: RoleAssistant, Content: "现在时间是..."},
+			{Role: types.RoleAssistant, Content: "现在时间是..."},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	result, err := agent.Run("几点了")
 	if err != nil {
 		t.Fatalf("Run 错误: %v", err)
@@ -533,29 +534,29 @@ func TestAgentRun_EmptyToolArgs(t *testing.T) {
 
 func TestAgentRun_ParallelToolCalls(t *testing.T) {
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// planPhase: 判断为简单任务
-			{Role: RoleAssistant, Content: "SIMPLE"},
+			{Role: types.RoleAssistant, Content: "SIMPLE"},
 			// reactLoop: LLM 一次返回多个 tool_calls
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID: "call_1", Type: "function",
-						Function: FunctionCall{Name: "calculator", Arguments: `{"expression":"1+1"}`},
+						Function: types.FunctionCall{Name: "calculator", Arguments: `{"expression":"1+1"}`},
 					},
 					{
 						ID: "call_2", Type: "function",
-						Function: FunctionCall{Name: "calculator", Arguments: `{"expression":"2+2"}`},
+						Function: types.FunctionCall{Name: "calculator", Arguments: `{"expression":"2+2"}`},
 					},
 				},
 			},
 			// reactLoop: 回复
-			{Role: RoleAssistant, Content: "1+1=2, 2+2=4"},
+			{Role: types.RoleAssistant, Content: "1+1=2, 2+2=4"},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	result, err := agent.Run("算一下 1+1 和 2+2")
 	if err != nil {
 		t.Fatalf("Run 错误: %v", err)
@@ -565,7 +566,7 @@ func TestAgentRun_ParallelToolCalls(t *testing.T) {
 	history := agent.GetHistory()
 	toolResults := 0
 	for _, m := range history {
-		if m.Role == RoleTool {
+		if m.Role == types.RoleTool {
 			toolResults++
 		}
 	}
@@ -578,7 +579,7 @@ func TestAgentRun_ParallelToolCalls(t *testing.T) {
 // ─── DefaultConfig 测试 ──────────────────────────────────────
 
 func TestDefaultConfig(t *testing.T) {
-	config := DefaultConfig()
+	config := types.DefaultConfig()
 	if config.MaxTurns != 10 {
 		t.Errorf("MaxTurns = %d, 期望 10", config.MaxTurns)
 	}
@@ -591,11 +592,11 @@ func TestDefaultConfig(t *testing.T) {
 
 func TestSetPlan(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
-	plan := Plan{
+	plan := types.Plan{
 		Goal: "测试目标",
-		Steps: []Step{
+		Steps: []types.Step{
 			{Description: "步骤一"},
 			{Description: "步骤二"},
 			{Description: "步骤三"},
@@ -626,7 +627,7 @@ func TestSetPlan(t *testing.T) {
 
 func TestCreatePlanTool(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	// 验证 create_plan 工具已注册
 	tool, ok := agent.registry.Get("create_plan")
@@ -669,7 +670,7 @@ func TestCreatePlanTool(t *testing.T) {
 
 func TestCreatePlanTool_InvalidJSON(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	tool, _ := agent.registry.Get("create_plan")
 
@@ -687,7 +688,7 @@ func TestCreatePlanTool_InvalidJSON(t *testing.T) {
 
 func TestExecuteCreatePlan_ValidJSON(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	argsJSON := `{
 		"goal": "分析代码",
@@ -724,7 +725,7 @@ func TestExecuteCreatePlan_ValidJSON(t *testing.T) {
 
 func TestExecuteCreatePlan_InvalidJSON(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	_, err := agent.executeCreatePlan(`{invalid json}`)
 	if err == nil {
@@ -737,7 +738,7 @@ func TestExecuteCreatePlan_InvalidJSON(t *testing.T) {
 
 func TestExecuteCreatePlan_EmptySteps(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	argsJSON := `{"goal": "空计划", "steps": []}`
 	plan, err := agent.executeCreatePlan(argsJSON)
@@ -753,14 +754,14 @@ func TestExecuteCreatePlan_EmptySteps(t *testing.T) {
 
 func TestExecuteStep(t *testing.T) {
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// reactLoop: 直接回复
-			{Role: RoleAssistant, Content: "步骤完成"},
+			{Role: types.RoleAssistant, Content: "步骤完成"},
 		},
 	}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
-	step := Step{ID: 1, Description: "读取文件", Status: "pending"}
+	step := types.Step{ID: 1, Description: "读取文件", Status: "pending"}
 	result, err := agent.executeStep(step, 1, 3)
 	if err != nil {
 		t.Fatalf("executeStep 错误: %v", err)
@@ -772,25 +773,25 @@ func TestExecuteStep(t *testing.T) {
 
 func TestExecuteStep_WithToolCall(t *testing.T) {
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// reactLoop: 调用工具
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:       "call_1",
 						Type:     "function",
-						Function: FunctionCall{Name: "calculator", Arguments: `{"expression":"1+1"}`},
+						Function: types.FunctionCall{Name: "calculator", Arguments: `{"expression":"1+1"}`},
 					},
 				},
 			},
 			// reactLoop: 工具结果后回复
-			{Role: RoleAssistant, Content: "计算结果是 2"},
+			{Role: types.RoleAssistant, Content: "计算结果是 2"},
 		},
 	}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
-	step := Step{ID: 1, Description: "计算表达式", Status: "pending"}
+	step := types.Step{ID: 1, Description: "计算表达式", Status: "pending"}
 	result, err := agent.executeStep(step, 1, 2)
 	if err != nil {
 		t.Fatalf("executeStep 错误: %v", err)
@@ -802,9 +803,9 @@ func TestExecuteStep_WithToolCall(t *testing.T) {
 
 func TestExecuteStep_LLMError(t *testing.T) {
 	client := &errorClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
-	step := Step{ID: 1, Description: "会失败的步骤", Status: "pending"}
+	step := types.Step{ID: 1, Description: "会失败的步骤", Status: "pending"}
 	_, err := agent.executeStep(step, 1, 1)
 	if err == nil {
 		t.Error("LLM 错误时应返回错误")
@@ -815,16 +816,16 @@ func TestExecuteStep_LLMError(t *testing.T) {
 
 func TestSummarizeResults(t *testing.T) {
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// summarizeResults 的 LLM 调用
-			{Role: RoleAssistant, Content: "最终汇总答案"},
+			{Role: types.RoleAssistant, Content: "最终汇总答案"},
 		},
 	}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
-	plan := &Plan{
+	plan := &types.Plan{
 		Goal: "测试目标",
-		Steps: []Step{
+		Steps: []types.Step{
 			{ID: 1, Description: "步骤一"},
 			{ID: 2, Description: "步骤二"},
 		},
@@ -842,11 +843,11 @@ func TestSummarizeResults(t *testing.T) {
 
 func TestSummarizeResults_LLMError(t *testing.T) {
 	client := &errorClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
-	plan := &Plan{
+	plan := &types.Plan{
 		Goal: "测试目标",
-		Steps: []Step{
+		Steps: []types.Step{
 			{ID: 1, Description: "步骤一"},
 		},
 	}
@@ -866,15 +867,15 @@ func TestSummarizeResults_LLMError(t *testing.T) {
 func TestRun_WithPlan(t *testing.T) {
 	// 复杂任务：planPhase 返回 create_plan，然后逐步执行
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// planPhase: LLM 调用 create_plan
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:   "call_plan",
 						Type: "function",
-						Function: FunctionCall{
+						Function: types.FunctionCall{
 							Name:      "create_plan",
 							Arguments: `{"goal":"分析代码","steps":[{"description":"读取文件"},{"description":"分析逻辑"}]}`,
 						},
@@ -882,15 +883,15 @@ func TestRun_WithPlan(t *testing.T) {
 				},
 			},
 			// 步骤 1 的 reactLoop: 直接回复
-			{Role: RoleAssistant, Content: "文件内容已读取"},
+			{Role: types.RoleAssistant, Content: "文件内容已读取"},
 			// 步骤 2 的 reactLoop: 直接回复
-			{Role: RoleAssistant, Content: "逻辑分析完成"},
+			{Role: types.RoleAssistant, Content: "逻辑分析完成"},
 			// summarizeResults 的 LLM 调用
-			{Role: RoleAssistant, Content: "最终分析报告"},
+			{Role: types.RoleAssistant, Content: "最终分析报告"},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	result, err := agent.Run("帮我分析这段代码")
 	if err != nil {
 		t.Fatalf("Run 错误: %v", err)
@@ -902,15 +903,15 @@ func TestRun_WithPlan(t *testing.T) {
 
 func TestRun_WithPlanStepError(t *testing.T) {
 	// 计划中某个步骤超过最大轮数，但后续步骤继续执行
-	responses := []*Message{
+	responses := []*types.Message{
 		// planPhase: LLM 调用 create_plan
 		{
-			Role: RoleAssistant,
-			ToolCalls: []ToolCall{
+			Role: types.RoleAssistant,
+			ToolCalls: []types.ToolCall{
 				{
 					ID:   "call_plan",
 					Type: "function",
-					Function: FunctionCall{
+					Function: types.FunctionCall{
 						Name:      "create_plan",
 						Arguments: `{"goal":"测试","steps":[{"description":"会失败的步骤"},{"description":"正常步骤"}]}`,
 					},
@@ -920,22 +921,22 @@ func TestRun_WithPlanStepError(t *testing.T) {
 	}
 	// 步骤 1: reactLoop 每轮都调用工具，超过 MaxTurns=3
 	for i := 0; i < 4; i++ {
-		responses = append(responses, &Message{
-			Role: RoleAssistant,
-			ToolCalls: []ToolCall{
-				{ID: fmt.Sprintf("c%d", i), Type: "function", Function: FunctionCall{Name: "calculator", Arguments: `{"expression":"1"}`}},
+		responses = append(responses, &types.Message{
+			Role: types.RoleAssistant,
+			ToolCalls: []types.ToolCall{
+				{ID: fmt.Sprintf("c%d", i), Type: "function", Function: types.FunctionCall{Name: "calculator", Arguments: `{"expression":"1"}`}},
 			},
 		})
 	}
 	// 步骤 2 + summarizeResults
 	responses = append(responses,
-		&Message{Role: RoleAssistant, Content: "步骤 2 完成"},
-		&Message{Role: RoleAssistant, Content: "汇总结果"},
+		&types.Message{Role: types.RoleAssistant, Content: "步骤 2 完成"},
+		&types.Message{Role: types.RoleAssistant, Content: "汇总结果"},
 	)
 
 	client := &scriptedClient{responses: responses}
 
-	config := DefaultConfig()
+	config := types.DefaultConfig()
 	config.MaxTurns = 3
 	agent := NewAgent(client, config)
 
@@ -951,15 +952,15 @@ func TestRun_WithPlanStepError(t *testing.T) {
 func TestRun_SummaryError(t *testing.T) {
 	// planPhase 成功，但 summarizeResults 时预设响应已用完
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			// planPhase: LLM 调用 create_plan
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:   "call_plan",
 						Type: "function",
-						Function: FunctionCall{
+						Function: types.FunctionCall{
 							Name:      "create_plan",
 							Arguments: `{"goal":"测试","steps":[{"description":"步骤一"}]}`,
 						},
@@ -967,12 +968,12 @@ func TestRun_SummaryError(t *testing.T) {
 				},
 			},
 			// 步骤 1: reactLoop 完成
-			{Role: RoleAssistant, Content: "完成"},
+			{Role: types.RoleAssistant, Content: "完成"},
 			// 这之后 summarizeResults 会调用 LLM，但预设响应已用完 → 报错
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	_, err := agent.Run("测试")
 	// summarizeResults 调用 LLM 时预设响应已用完，应报错
 	if err == nil {
@@ -983,7 +984,7 @@ func TestRun_SummaryError(t *testing.T) {
 func TestRun_PlanPhaseError(t *testing.T) {
 	// planPhase 阶段 LLM 报错
 	client := &errorClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	_, err := agent.Run("你好")
 	if err == nil {
@@ -999,14 +1000,14 @@ func TestRun_PlanPhaseError(t *testing.T) {
 func TestPlanPhase_WithCreatePlanToolCall(t *testing.T) {
 	// planPhase 中 LLM 调用 create_plan 工具
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:   "call_plan",
 						Type: "function",
-						Function: FunctionCall{
+						Function: types.FunctionCall{
 							Name:      "create_plan",
 							Arguments: `{"goal":"多步任务","steps":[{"description":"步骤A"},{"description":"步骤B"}]}`,
 						},
@@ -1016,9 +1017,9 @@ func TestPlanPhase_WithCreatePlanToolCall(t *testing.T) {
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 	// 需要先添加用户消息到历史（模拟 Run 的行为）
-	agent.history = append(agent.history, Message{Role: RoleUser, Content: "复杂任务"})
+	agent.history = append(agent.history, types.Message{Role: types.RoleUser, Content: "复杂任务"})
 
 	plan, err := agent.planPhase()
 	if err != nil {
@@ -1038,13 +1039,13 @@ func TestPlanPhase_WithCreatePlanToolCall(t *testing.T) {
 func TestPlanPhase_SimpleTask(t *testing.T) {
 	// planPhase 中 LLM 回复 SIMPLE
 	client := &scriptedClient{
-		responses: []*Message{
-			{Role: RoleAssistant, Content: "SIMPLE"},
+		responses: []*types.Message{
+			{Role: types.RoleAssistant, Content: "SIMPLE"},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
-	agent.history = append(agent.history, Message{Role: RoleUser, Content: "简单问题"})
+	agent := NewAgent(client, types.DefaultConfig())
+	agent.history = append(agent.history, types.Message{Role: types.RoleUser, Content: "简单问题"})
 
 	plan, err := agent.planPhase()
 	if err != nil {
@@ -1058,13 +1059,13 @@ func TestPlanPhase_SimpleTask(t *testing.T) {
 func TestPlanPhase_NonSimpleText(t *testing.T) {
 	// planPhase 中 LLM 回复非 "SIMPLE" 的文本（也视为简单任务）
 	client := &scriptedClient{
-		responses: []*Message{
-			{Role: RoleAssistant, Content: "好的，我来回答"},
+		responses: []*types.Message{
+			{Role: types.RoleAssistant, Content: "好的，我来回答"},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
-	agent.history = append(agent.history, Message{Role: RoleUser, Content: "你好"})
+	agent := NewAgent(client, types.DefaultConfig())
+	agent.history = append(agent.history, types.Message{Role: types.RoleUser, Content: "你好"})
 
 	plan, err := agent.planPhase()
 	if err != nil {
@@ -1077,8 +1078,8 @@ func TestPlanPhase_NonSimpleText(t *testing.T) {
 
 func TestPlanPhase_LLMError(t *testing.T) {
 	client := &errorClient{}
-	agent := NewAgent(client, DefaultConfig())
-	agent.history = append(agent.history, Message{Role: RoleUser, Content: "测试"})
+	agent := NewAgent(client, types.DefaultConfig())
+	agent.history = append(agent.history, types.Message{Role: types.RoleUser, Content: "测试"})
 
 	_, err := agent.planPhase()
 	if err == nil {
@@ -1089,22 +1090,22 @@ func TestPlanPhase_LLMError(t *testing.T) {
 func TestPlanPhase_UnknownToolCall(t *testing.T) {
 	// planPhase 中 LLM 调用了非 create_plan 的工具
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:       "call_other",
 						Type:     "function",
-						Function: FunctionCall{Name: "calculator", Arguments: `{"expression":"1+1"}`},
+						Function: types.FunctionCall{Name: "calculator", Arguments: `{"expression":"1+1"}`},
 					},
 				},
 			},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
-	agent.history = append(agent.history, Message{Role: RoleUser, Content: "测试"})
+	agent := NewAgent(client, types.DefaultConfig())
+	agent.history = append(agent.history, types.Message{Role: types.RoleUser, Content: "测试"})
 
 	plan, err := agent.planPhase()
 	if err != nil {
@@ -1119,22 +1120,22 @@ func TestPlanPhase_UnknownToolCall(t *testing.T) {
 func TestPlanPhase_InvalidPlanJSON(t *testing.T) {
 	// create_plan 工具调用但参数无效
 	client := &scriptedClient{
-		responses: []*Message{
+		responses: []*types.Message{
 			{
-				Role: RoleAssistant,
-				ToolCalls: []ToolCall{
+				Role: types.RoleAssistant,
+				ToolCalls: []types.ToolCall{
 					{
 						ID:       "call_plan",
 						Type:     "function",
-						Function: FunctionCall{Name: "create_plan", Arguments: `{invalid}`},
+						Function: types.FunctionCall{Name: "create_plan", Arguments: `{invalid}`},
 					},
 				},
 			},
 		},
 	}
 
-	agent := NewAgent(client, DefaultConfig())
-	agent.history = append(agent.history, Message{Role: RoleUser, Content: "测试"})
+	agent := NewAgent(client, types.DefaultConfig())
+	agent.history = append(agent.history, types.Message{Role: types.RoleUser, Content: "测试"})
 
 	_, err := agent.planPhase()
 	if err == nil {
@@ -1144,7 +1145,7 @@ func TestPlanPhase_InvalidPlanJSON(t *testing.T) {
 
 func TestAgentFormatSkillList(t *testing.T) {
 	client := &scriptedClient{}
-	agent := NewAgent(client, DefaultConfig())
+	agent := NewAgent(client, types.DefaultConfig())
 
 	result := agent.FormatSkillList()
 

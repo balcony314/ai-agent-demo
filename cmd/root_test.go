@@ -10,6 +10,7 @@ import (
 	"testing"
 
 	"ai-agent-demo/agent"
+	"ai-agent-demo/agent/types"
 )
 
 func TestInitLLMClient_MockMode(t *testing.T) {
@@ -89,25 +90,25 @@ func TestPrintHelp(t *testing.T) {
 
 func TestPrintHistory(t *testing.T) {
 	// 测试空历史
-	printHistory([]agent.Message{})
+	printHistory([]types.Message{})
 
 	// 测试有消息的历史
-	history := []agent.Message{
-		{Role: agent.RoleUser, Content: "你好"},
-		{Role: agent.RoleAssistant, Content: "你好！有什么可以帮你的吗？"},
-		{Role: agent.RoleTool, Content: "工具结果"},
+	history := []types.Message{
+		{Role: types.RoleUser, Content: "你好"},
+		{Role: types.RoleAssistant, Content: "你好！有什么可以帮你的吗？"},
+		{Role: types.RoleTool, Content: "工具结果"},
 	}
 	printHistory(history)
 }
 
 func TestPrintHistory_WithToolCalls(t *testing.T) {
 	// 测试包含工具调用的历史
-	history := []agent.Message{
+	history := []types.Message{
 		{
-			Role:    agent.RoleAssistant,
+			Role:    types.RoleAssistant,
 			Content: "",
-			ToolCalls: []agent.ToolCall{
-				{ID: "call_1", Function: agent.FunctionCall{Name: "calculator", Arguments: `{"expression":"1+1"}`}},
+			ToolCalls: []types.ToolCall{
+				{ID: "call_1", Function: types.FunctionCall{Name: "calculator", Arguments: `{"expression":"1+1"}`}},
 			},
 		},
 	}
@@ -116,8 +117,8 @@ func TestPrintHistory_WithToolCalls(t *testing.T) {
 
 func TestPrintHistory_UnknownRole(t *testing.T) {
 	// 测试未知 role 的 default 分支
-	history := []agent.Message{
-		{Role: agent.Role("custom"), Content: "自定义角色消息"},
+	history := []types.Message{
+		{Role: types.Role("custom"), Content: "自定义角色消息"},
 	}
 	printHistory(history)
 }

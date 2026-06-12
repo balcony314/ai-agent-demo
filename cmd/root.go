@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"ai-agent-demo/agent"
+	"ai-agent-demo/agent/types"
 
 	"github.com/spf13/cobra"
 )
@@ -89,7 +90,7 @@ func runREPL(cmd *cobra.Command, args []string) error {
 
 	llm := initLLMClient()
 	checkAPIConnection(llm)
-	config := agent.ConfigWithModel(model)
+	config := types.ConfigWithModel(model)
 	a := agent.NewAgent(llm, config)
 
 	fmt.Printf("🛠️  可用工具: %s\n", strings.Join(a.ListTools(), ", "))
@@ -195,19 +196,19 @@ func printHelp() {
 `)
 }
 
-func printHistory(history []agent.Message) {
+func printHistory(history []types.Message) {
 	fmt.Println("\n📜 对话历史:")
 	fmt.Println(strings.Repeat("─", 50))
 	for i, msg := range history {
 		var prefix string
 		switch msg.Role {
-		case agent.RoleSystem:
+		case types.RoleSystem:
 			prefix = "⚙️  [System]"
-		case agent.RoleUser:
+		case types.RoleUser:
 			prefix = "🧑 [User]"
-		case agent.RoleAssistant:
+		case types.RoleAssistant:
 			prefix = "🤖 [Assistant]"
-		case agent.RoleTool:
+		case types.RoleTool:
 			prefix = "🔧 [Tool]"
 		default:
 			prefix = fmt.Sprintf("[%s]", msg.Role)

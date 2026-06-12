@@ -1,28 +1,21 @@
-package agent
+package tools
 
 // ═══════════════════════════════════════════════════════════════
-// tools.go — 工具注册表与内置工具
+// builtin.go — 内置工具集
 // ═══════════════════════════════════════════════════════════════
 //
-// 【教学要点】什么是工具（Tool）？
+// 提供 4 个内置工具：
+//   - calculator: 数学计算
+//   - current_time: 获取当前时间
+//   - search: 模拟搜索（教学用）
+//   - text_transform: 文本转换
 //
-// 工具是 Agent 与外部世界交互的接口。
-// LLM 本身只能生成文本，但通过工具它可以：
-//   - 执行计算（calculator）
-//   - 获取时间（current_time）
-//   - 搜索信息（search）→ 这就是 RAG 的基础
-//   - 操作文件、数据库、API...
-//
-// 工具系统的工作流程：
-//   1. 开发者定义工具的 schema（名字、描述、参数）
-//   2. Schema 发送给 LLM，LLM 决定什么时候用哪个工具
-//   3. LLM 返回工具调用请求（name + arguments）
-//   4. Agent 执行工具，拿到结果
-//   5. 结果放回对话，LLM 继续推理
-//
-// 这就是 Function Calling 的核心机制！
+// 以及辅助函数：
+//   - evaluateExpression: 简易数学表达式求值器
+//   - mockSearch: 模拟搜索引擎
 
 import (
+	"ai-agent-demo/agent/types"
 	"encoding/json"
 	"fmt"
 	"math"
@@ -30,61 +23,16 @@ import (
 	"time"
 )
 
-// ─── 工具注册表 ─────────────────────────────────────────────────
-
-// ToolRegistry 管理所有可用工具
-type ToolRegistry struct {
-	tools map[string]Tool
-}
-
-// NewToolRegistry 创建一个新的工具注册表
-func NewToolRegistry() *ToolRegistry {
-	return &ToolRegistry{
-		tools: make(map[string]Tool),
-	}
-}
-
-// Register 注册一个工具
-func (r *ToolRegistry) Register(tool Tool) {
-	r.tools[tool.Definition.Function.Name] = tool
-}
-
-// Get 根据名称获取工具
-func (r *ToolRegistry) Get(name string) (Tool, bool) {
-	tool, ok := r.tools[name]
-	return tool, ok
-}
-
-// Definitions 获取所有工具的 schema（发给 LLM 用）
-func (r *ToolRegistry) Definitions() []ToolDefinition {
-	defs := make([]ToolDefinition, 0, len(r.tools))
-	for _, tool := range r.tools {
-		defs = append(defs, tool.Definition)
-	}
-	return defs
-}
-
-// Names 获取所有工具名（日志用）
-func (r *ToolRegistry) Names() []string {
-	names := make([]string, 0, len(r.tools))
-	for name := range r.tools {
-		names = append(names, name)
-	}
-	return names
-}
-
-// ─── 内置工具实现 ──────────────────────────────────────────────
-
 // RegisterBuiltinTools 注册所有内置工具
 func RegisterBuiltinTools(registry *ToolRegistry) {
 
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	// 工具 1: 计算器
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	registry.Register(Tool{
-		Definition: ToolDefinition{
+	registry.Register(types.Tool{
+		Definition: types.ToolDefinition{
 			Type: "function",
-			Function: FunctionSchema{
+			Function: types.FunctionSchema{
 				Name:        "calculator",
 				Description: "执行数学计算。支持加减乘除、幂运算、三角函数等。",
 				Parameters: json.RawMessage(`{
@@ -117,10 +65,10 @@ func RegisterBuiltinTools(registry *ToolRegistry) {
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	// 工具 2: 获取当前时间
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	registry.Register(Tool{
-		Definition: ToolDefinition{
+	registry.Register(types.Tool{
+		Definition: types.ToolDefinition{
 			Type: "function",
-			Function: FunctionSchema{
+			Function: types.FunctionSchema{
 				Name:        "current_time",
 				Description: "获取当前的日期和时间",
 				Parameters: json.RawMessage(`{
@@ -159,10 +107,10 @@ func RegisterBuiltinTools(registry *ToolRegistry) {
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	// 在真实场景中，这里会调用 Google/Bing API
 	// 教学 demo 用一个小型知识库模拟
-	registry.Register(Tool{
-		Definition: ToolDefinition{
+	registry.Register(types.Tool{
+		Definition: types.ToolDefinition{
 			Type: "function",
-			Function: FunctionSchema{
+			Function: types.FunctionSchema{
 				Name:        "search",
 				Description: "搜索信息。用于查找实时数据、百科知识等。",
 				Parameters: json.RawMessage(`{
@@ -191,10 +139,10 @@ func RegisterBuiltinTools(registry *ToolRegistry) {
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 	// 工具 4: 字符串处理
 	// ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-	registry.Register(Tool{
-		Definition: ToolDefinition{
+	registry.Register(types.Tool{
+		Definition: types.ToolDefinition{
 			Type: "function",
-			Function: FunctionSchema{
+			Function: types.FunctionSchema{
 				Name:        "text_transform",
 				Description: "对文本进行转换：转大写、转小写、反转、计算长度",
 				Parameters: json.RawMessage(`{

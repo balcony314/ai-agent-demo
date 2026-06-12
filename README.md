@@ -62,12 +62,21 @@ ai-agent-demo/
 │   ├── chat.go          # chat 子命令：单次提问
 │   └── version.go       # version 子命令：版本信息
 ├── agent/
-│   ├── types.go         # 核心类型：Message, ToolCall, ToolDefinition, Config, LLMClient 接口
-│   ├── tools.go         # 工具注册表 + 5 个内置工具
-│   ├── file_tools.go    # 8 个文件操作工具（读写、编辑、搜索等）
-│   ├── skill.go         # 技能注册表 + 5 个内置技能
+│   ├── agent.go         # Plan + ReAct 两阶段编排 + 技能切换
 │   ├── llm.go           # LLM 客户端（OpenAI Ping + Chat / Mock）
-│   └── agent.go         # Plan + ReAct 两阶段编排 + 技能切换
+│   ├── doc.go           # 包文档
+│   ├── types/           # 核心类型
+│   │   └── types.go     # Message, ToolCall, ToolDefinition, Config, Role, Plan, Step
+│   ├── tools/           # 工具系统
+│   │   ├── registry.go  # ToolRegistry
+│   │   ├── builtin.go   # 内置工具 + 辅助函数
+│   │   ├── file_utils.go # 文件工具通用函数
+│   │   ├── file_read.go # 只读文件工具
+│   │   ├── file_write.go # 写入文件工具
+│   │   ├── exec.go      # 命令执行工具注册
+│   │   └── exec/        # 命令执行核心逻辑
+│   └── skills/          # 技能系统
+│       └── registry.go  # SkillRegistry + 内置技能
 ├── Taskfile.yml         # Task 构建配置
 └── build/               # 编译输出（gitignore）
 ```
@@ -165,13 +174,13 @@ ai-agent-demo/
 
 ### 扩展工具
 
-在 `agent/tools.go` 的 `RegisterBuiltinTools()` 中添加新工具：
+在 `agent/tools/builtin.go` 的 `RegisterBuiltinTools()` 中添加新工具：
 
 ```go
-registry.Register(Tool{
-    Definition: ToolDefinition{
+registry.Register(types.Tool{
+    Definition: types.ToolDefinition{
         Type: "function",
-        Function: FunctionSchema{
+        Function: types.FunctionSchema{
             Name:        "my_tool",
             Description: "工具描述（LLM 根据这个决定何时调用）",
             Parameters:  json.RawMessage(`{"type": "object", "properties": {...}}`),
@@ -184,11 +193,11 @@ registry.Register(Tool{
 })
 ```
 
-文件操作工具在 `agent/file_tools.go` 中实现，使用工厂函数模式（如 `newReadFileTool()`），并通过 `RegisterFileTools()` 集中注册。
+文件操作工具在 `agent/tools/` 目录下实现，使用工厂函数模式（如 `newReadFileTool()`），并通过 `RegisterFileTools()` 集中注册。
 
 ### 扩展技能
 
-在 `agent/skill.go` 的 `RegisterBuiltinSkills()` 中添加新技能：
+在 `agent/skills/registry.go` 的 `RegisterBuiltinSkills()` 中添加新技能：
 
 ```go
 registry.Register(Skill{

@@ -1,6 +1,7 @@
 package agent
 
 import (
+	"ai-agent-demo/agent/types"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -21,15 +22,15 @@ func TestMockClient_NewMockClient(t *testing.T) {
 
 func TestMockClient_ToolCallSequence(t *testing.T) {
 	client := NewMockClient()
-	tools := []ToolDefinition{
-		{Type: "function", Function: FunctionSchema{Name: "search"}},
-		{Type: "function", Function: FunctionSchema{Name: "calculator"}},
+	tools := []types.ToolDefinition{
+		{Type: "function", Function: types.FunctionSchema{Name: "search"}},
+		{Type: "function", Function: types.FunctionSchema{Name: "calculator"}},
 	}
 
 	// 第 1 次调用：search（用户消息）
-	messages := []Message{
-		{Role: RoleSystem, Content: "你是助手"},
-		{Role: RoleUser, Content: "搜索一下"},
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "你是助手"},
+		{Role: types.RoleUser, Content: "搜索一下"},
 	}
 	resp, err := client.Chat(messages, tools)
 	if err != nil {
@@ -74,18 +75,18 @@ func TestMockClient_ToolCallSequence(t *testing.T) {
 
 func TestMockClient_TextReplyAfterToolCalls(t *testing.T) {
 	client := NewMockClient()
-	tools := []ToolDefinition{
-		{Type: "function", Function: FunctionSchema{Name: "search"}},
+	tools := []types.ToolDefinition{
+		{Type: "function", Function: types.FunctionSchema{Name: "search"}},
 	}
 
 	// 前 3 次调用工具
-	messages := []Message{
-		{Role: RoleSystem, Content: "你是助手"},
-		{Role: RoleUser, Content: "测试"},
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "你是助手"},
+		{Role: types.RoleUser, Content: "测试"},
 	}
 	for i := 0; i < 3; i++ {
 		resp, _ := client.Chat(messages, tools)
-		messages = append(messages, *resp, Message{Role: RoleTool, Content: "结果"})
+		messages = append(messages, *resp, types.Message{Role: types.RoleTool, Content: "结果"})
 	}
 
 	// 第 4 次调用：应该返回文本而不是工具调用
@@ -103,9 +104,9 @@ func TestMockClient_TextReplyAfterToolCalls(t *testing.T) {
 
 func TestMockClient_HelpKeyword(t *testing.T) {
 	client := NewMockClient()
-	messages := []Message{
-		{Role: RoleSystem, Content: "你是助手"},
-		{Role: RoleUser, Content: "帮助"},
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "你是助手"},
+		{Role: types.RoleUser, Content: "帮助"},
 	}
 
 	resp, err := client.Chat(messages, nil)
@@ -119,9 +120,9 @@ func TestMockClient_HelpKeyword(t *testing.T) {
 
 func TestMockClient_DefaultReply(t *testing.T) {
 	client := NewMockClient()
-	messages := []Message{
-		{Role: RoleSystem, Content: "你是助手"},
-		{Role: RoleUser, Content: "随便说点什么"},
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "你是助手"},
+		{Role: types.RoleUser, Content: "随便说点什么"},
 	}
 
 	resp, err := client.Chat(messages, nil)
@@ -137,13 +138,13 @@ func TestMockClient_ToolResultSummary(t *testing.T) {
 	client := NewMockClient()
 
 	// 模拟工具结果消息
-	messages := []Message{
-		{Role: RoleSystem, Content: "你是助手"},
-		{Role: RoleUser, Content: "搜索"},
-		{Role: RoleAssistant, Content: "", ToolCalls: []ToolCall{
-			{ID: "call_1", Type: "function", Function: FunctionCall{Name: "search", Arguments: `{"query":"test"}`}},
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "你是助手"},
+		{Role: types.RoleUser, Content: "搜索"},
+		{Role: types.RoleAssistant, Content: "", ToolCalls: []types.ToolCall{
+			{ID: "call_1", Type: "function", Function: types.FunctionCall{Name: "search", Arguments: `{"query":"test"}`}},
 		}},
-		{Role: RoleTool, Content: "这是搜索结果内容"},
+		{Role: types.RoleTool, Content: "这是搜索结果内容"},
 	}
 
 	resp, err := client.Chat(messages, nil)
@@ -261,9 +262,9 @@ func TestOpenAIClient_Chat_Success(t *testing.T) {
 	defer server.Close()
 
 	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
-	messages := []Message{
-		{Role: RoleSystem, Content: "你是助手"},
-		{Role: RoleUser, Content: "你好"},
+	messages := []types.Message{
+		{Role: types.RoleSystem, Content: "你是助手"},
+		{Role: types.RoleUser, Content: "你好"},
 	}
 
 	resp, err := client.Chat(messages, nil)
@@ -273,8 +274,8 @@ func TestOpenAIClient_Chat_Success(t *testing.T) {
 	if resp.Content != "你好！" {
 		t.Errorf("Content = %q, 期望 %q", resp.Content, "你好！")
 	}
-	if resp.Role != RoleAssistant {
-		t.Errorf("Role = %q, 期望 %q", resp.Role, RoleAssistant)
+	if resp.Role != types.RoleAssistant {
+		t.Errorf("Role = %q, 期望 %q", resp.Role, types.RoleAssistant)
 	}
 }
 
@@ -301,9 +302,9 @@ func TestOpenAIClient_Chat_WithTools(t *testing.T) {
 	defer server.Close()
 
 	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
-	messages := []Message{{Role: RoleUser, Content: "搜索一下"}}
-	tools := []ToolDefinition{
-		{Type: "function", Function: FunctionSchema{Name: "search", Description: "搜索"}},
+	messages := []types.Message{{Role: types.RoleUser, Content: "搜索一下"}}
+	tools := []types.ToolDefinition{
+		{Type: "function", Function: types.FunctionSchema{Name: "search", Description: "搜索"}},
 	}
 
 	resp, err := client.Chat(messages, tools)
@@ -326,7 +327,7 @@ func TestOpenAIClient_Chat_HTTPError(t *testing.T) {
 	defer server.Close()
 
 	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
-	messages := []Message{{Role: RoleUser, Content: "你好"}}
+	messages := []types.Message{{Role: types.RoleUser, Content: "你好"}}
 
 	_, err := client.Chat(messages, nil)
 	if err == nil {
@@ -342,7 +343,7 @@ func TestOpenAIClient_Chat_EmptyChoices(t *testing.T) {
 	defer server.Close()
 
 	client := NewOpenAIClient("sk-test", server.URL, "gpt-4o")
-	messages := []Message{{Role: RoleUser, Content: "你好"}}
+	messages := []types.Message{{Role: types.RoleUser, Content: "你好"}}
 
 	_, err := client.Chat(messages, nil)
 	if err == nil {
@@ -352,7 +353,7 @@ func TestOpenAIClient_Chat_EmptyChoices(t *testing.T) {
 
 func TestOpenAIClient_Chat_Unreachable(t *testing.T) {
 	client := NewOpenAIClient("sk-test", "http://127.0.0.1:1", "gpt-4o")
-	messages := []Message{{Role: RoleUser, Content: "你好"}}
+	messages := []types.Message{{Role: types.RoleUser, Content: "你好"}}
 
 	_, err := client.Chat(messages, nil)
 	if err == nil {

@@ -325,28 +325,28 @@ task build
 
 ### 添加新工具
 
-1. 在 `agent/tools.go` 注册
+1. 在 `agent/tools/builtin.go` 的 `RegisterBuiltinTools()` 注册
 2. 实现 `Execute` 函数
 3. 添加测试用例
 
 ### 添加文件操作工具
 
-1. 在 `agent/file_tools.go` 创建工厂函数
-2. 在 `RegisterFileTools()` 注册
+1. 在 `agent/tools/` 目录创建工厂函数
+2. 在 `agent/tools/file_utils.go` 的 `RegisterFileTools()` 注册
 3. 使用 `validatePath()` 验证路径
-4. 在 `agent/file_tools_test.go` 添加测试
+4. 在对应的 `*_test.go` 文件添加测试
 
 ### 添加命令执行工具
 
-1. 核心逻辑放在 `agent/exec/` 包
-2. 工具注册在 `agent/exec_tools.go`
+1. 核心逻辑放在 `agent/tools/exec/` 包
+2. 工具注册在 `agent/tools/exec.go`
 3. 使用单例模式共享 Executor
 4. 实现三层安全防护
 5. 添加审计日志支持
 
 ### 添加新技能
 
-1. 在 `agent/skill.go` 注册
+1. 在 `agent/skills/registry.go` 的 `RegisterBuiltinSkills()` 注册
 2. 定义 `SystemPrompt`
 3. 可选：限制可用工具
 

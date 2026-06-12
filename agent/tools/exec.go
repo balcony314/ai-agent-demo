@@ -1,7 +1,7 @@
-package agent
+package tools
 
 // ═══════════════════════════════════════════════════════════════
-// exec_tools.go — 命令执行工具集
+// exec.go — 命令执行工具集
 // ═══════════════════════════════════════════════════════════════
 //
 // 提供 2 个命令执行工具：
@@ -15,7 +15,8 @@ package agent
 //   - 审计日志
 
 import (
-	"ai-agent-demo/agent/exec"
+	"ai-agent-demo/agent/tools/exec"
+	"ai-agent-demo/agent/types"
 	"context"
 	"encoding/json"
 	"fmt"
@@ -60,11 +61,11 @@ func RegisterExecTools(registry *ToolRegistry) {
 }
 
 // newExecuteCommandTool 创建执行命令工具
-func newExecuteCommandTool() Tool {
-	return Tool{
-		Definition: ToolDefinition{
+func newExecuteCommandTool() types.Tool {
+	return types.Tool{
+		Definition: types.ToolDefinition{
 			Type: "function",
-			Function: FunctionSchema{
+			Function: types.FunctionSchema{
 				Name: "execute_command",
 				Description: `执行 shell 命令。
 特性：
@@ -169,11 +170,11 @@ func processStatus(proc *exec.ManagedProcess) string {
 }
 
 // newManageProcessTool 创建进程管理工具
-func newManageProcessTool() Tool {
-	return Tool{
-		Definition: ToolDefinition{
+func newManageProcessTool() types.Tool {
+	return types.Tool{
+		Definition: types.ToolDefinition{
 			Type: "function",
-			Function: FunctionSchema{
+			Function: types.FunctionSchema{
 				Name: "manage_process",
 				Description: `管理后台执行的进程。
 操作：

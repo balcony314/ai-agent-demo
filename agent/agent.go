@@ -51,6 +51,9 @@ package agent
 //   - 用户可以看到清晰的执行进度
 
 import (
+	"ai-agent-demo/agent/skills"
+	"ai-agent-demo/agent/tools"
+	"ai-agent-demo/agent/types"
 	"encoding/json"
 	"fmt"
 	"strings"
@@ -58,28 +61,28 @@ import (
 
 // Agent 是一个 AI 智能体
 type Agent struct {
-	config       Config          // 配置
-	llm          LLMClient      // LLM 客户端
-	registry     *ToolRegistry  // 工具注册表
-	skillReg     *SkillRegistry // 技能注册表
-	currentSkill string         // 当前激活的技能名称
-	history      []Message      // 对话历史
-	currentPlan  *Plan          // 当前执行的计划
+	config       types.Config          // 配置
+	llm          LLMClient            // LLM 客户端
+	registry     *tools.ToolRegistry  // 工具注册表
+	skillReg     *skills.SkillRegistry // 技能注册表
+	currentSkill string               // 当前激活的技能名称
+	history      []types.Message      // 对话历史
+	currentPlan  *types.Plan          // 当前执行的计划
 }
 
 // NewAgent 创建一个新的 Agent
-func NewAgent(llm LLMClient, config Config) *Agent {
+func NewAgent(llm LLMClient, config types.Config) *Agent {
 	// 注册内置工具
-	registry := NewToolRegistry()
-	RegisterBuiltinTools(registry)
+	registry := tools.NewToolRegistry()
+	tools.RegisterBuiltinTools(registry)
 
 	// 注册内置技能
-	skillReg := NewSkillRegistry()
-	RegisterBuiltinSkills(skillReg)
+	skillReg := skills.NewSkillRegistry()
+	skills.RegisterBuiltinSkills(skillReg)
 
 	// 初始化对话历史（system prompt 是第一条消息）
-	history := []Message{
-		{Role: RoleSystem, Content: config.SystemPrompt},
+	history := []types.Message{
+		{Role: types.RoleSystem, Content: config.SystemPrompt},
 	}
 
 	agent := &Agent{
@@ -110,8 +113,8 @@ func (a *Agent) Run(userInput string) (string, error) {
 	fmt.Printf("%s\n\n", strings.Repeat("─", 50))
 
 	// 1. 把用户消息加入历史
-	a.history = append(a.history, Message{
-		Role:    RoleUser,
+	a.history = append(a.history, types.Message{
+		Role:    types.RoleUser,
 		Content: userInput,
 	})
 
@@ -159,7 +162,7 @@ func (a *Agent) Run(userInput string) (string, error) {
 // planPhase 执行计划生成阶段
 // 调用 LLM 分析任务，生成执行计划
 // 返回 nil 表示任务简单，无需计划
-func (a *Agent) planPhase() (*Plan, error) {
+func (a *Agent) planPhase() (*types.Plan, error) {
 	fmt.Printf("📋 阶段 1: 生成执行计划\n")
 	fmt.Printf("%s\n", strings.Repeat("─", 40))
 
@@ -174,15 +177,15 @@ func (a *Agent) planPhase() (*Plan, error) {
 - 复杂任务：需要多步骤、多工具配合、有依赖关系的任务`
 
 	// 临时添加计划提示到历史（不污染主对话历史）
-	planHistory := make([]Message, len(a.history))
+	planHistory := make([]types.Message, len(a.history))
 	copy(planHistory, a.history)
-	planHistory = append(planHistory, Message{
-		Role:    RoleUser,
+	planHistory = append(planHistory, types.Message{
+		Role:    types.RoleUser,
 		Content: planPrompt,
 	})
 
 	// 只提供 create_plan 工具，让 LLM 决定是否创建计划
-	var planTools []ToolDefinition
+	var planTools []types.ToolDefinition
 	if tool, ok := a.registry.Get("create_plan"); ok {
 		planTools = append(planTools, tool.Definition)
 	}
@@ -198,7 +201,7 @@ func (a *Agent) planPhase() (*Plan, error) {
 
 // parsePlanResponse 解析 LLM 的计划阶段响应
 // 如果 LLM 调用了 create_plan 工具则返回计划，否则返回 nil（简单任务）
-func (a *Agent) parsePlanResponse(response *Message) (*Plan, error) {
+func (a *Agent) parsePlanResponse(response *types.Message) (*types.Plan, error) {
 	// 查找 create_plan 工具调用
 	for _, tc := range response.ToolCalls {
 		if tc.Function.Name != "create_plan" {
@@ -225,8 +228,8 @@ func (a *Agent) parsePlanResponse(response *Message) (*Plan, error) {
 }
 
 // executeCreatePlan 解析 create_plan 工具参数并返回计划
-func (a *Agent) executeCreatePlan(argsJSON string) (*Plan, error) {
-	var plan Plan
+func (a *Agent) executeCreatePlan(argsJSON string) (*types.Plan, error) {
+	var plan types.Plan
 	if err := json.Unmarshal([]byte(argsJSON), &plan); err != nil {
 		return nil, fmt.Errorf("计划解析失败: %w", err)
 	}
@@ -241,7 +244,7 @@ func (a *Agent) executeCreatePlan(argsJSON string) (*Plan, error) {
 }
 
 // executeStep 对单个计划步骤执行 ReAct 循环
-func (a *Agent) executeStep(step Step, stepNum, totalSteps int) (string, error) {
+func (a *Agent) executeStep(step types.Step, stepNum, totalSteps int) (string, error) {
 	stepPrompt := fmt.Sprintf("执行计划步骤 %d/%d: %s\n\n请完成这个步骤并报告结果。",
 		stepNum, totalSteps, step.Description)
 	return a.reactLoop(stepPrompt)
@@ -249,8 +252,8 @@ func (a *Agent) executeStep(step Step, stepNum, totalSteps int) (string, error) 
 
 // reactLoop 执行 ReAct 循环，最多 MaxTurns 轮
 func (a *Agent) reactLoop(taskPrompt string) (string, error) {
-	a.history = append(a.history, Message{
-		Role:    RoleUser,
+	a.history = append(a.history, types.Message{
+		Role:    types.RoleUser,
 		Content: taskPrompt,
 	})
 
@@ -279,8 +282,8 @@ func (a *Agent) reactLoop(taskPrompt string) (string, error) {
 			result, err := a.executeTool(tc.Function.Name, tc.Function.Arguments)
 			if err != nil {
 				fmt.Printf("      ❌ 错误: %v\n", err)
-				a.history = append(a.history, Message{
-					Role:       RoleTool,
+				a.history = append(a.history, types.Message{
+					Role:       types.RoleTool,
 					Content:    fmt.Sprintf("工具执行错误: %v", err),
 					ToolCallID: tc.ID,
 				})
@@ -288,8 +291,8 @@ func (a *Agent) reactLoop(taskPrompt string) (string, error) {
 			}
 
 			fmt.Printf("      📋 结果: %s\n", TruncStr(result, 60))
-			a.history = append(a.history, Message{
-				Role:       RoleTool,
+			a.history = append(a.history, types.Message{
+				Role:       types.RoleTool,
 				Content:    result,
 				ToolCallID: tc.ID,
 			})
@@ -303,7 +306,7 @@ func (a *Agent) reactLoop(taskPrompt string) (string, error) {
 }
 
 // summarizeResults 汇总所有步骤的结果，生成最终答案
-func (a *Agent) summarizeResults(plan *Plan, stepResults []string) (string, error) {
+func (a *Agent) summarizeResults(plan *types.Plan, stepResults []string) (string, error) {
 	var sb strings.Builder
 	sb.WriteString("所有执行步骤已完成，请根据以下结果生成最终答案。\n\n")
 	sb.WriteString(fmt.Sprintf("任务目标: %s\n\n", plan.Goal))
@@ -320,8 +323,8 @@ func (a *Agent) summarizeResults(plan *Plan, stepResults []string) (string, erro
 
 	sb.WriteString("\n请汇总以上结果，给出完整、清晰的最终答案。")
 
-	a.history = append(a.history, Message{
-		Role:    RoleUser,
+	a.history = append(a.history, types.Message{
+		Role:    types.RoleUser,
 		Content: sb.String(),
 	})
 
@@ -347,10 +350,10 @@ func (a *Agent) executeTool(name, argsJSON string) (string, error) {
 
 // registerPlanTool 注册计划工具（闭包捕获 Agent 引用）
 func (a *Agent) registerPlanTool() {
-	a.registry.Register(Tool{
-		Definition: ToolDefinition{
+	a.registry.Register(types.Tool{
+		Definition: types.ToolDefinition{
 			Type: "function",
-			Function: FunctionSchema{
+			Function: types.FunctionSchema{
 				Name:        "create_plan",
 				Description: "为复杂任务创建执行计划。当任务需要多步骤完成时使用此工具。",
 				Parameters: json.RawMessage(`{
@@ -380,7 +383,7 @@ func (a *Agent) registerPlanTool() {
 			},
 		},
 		Execute: func(args json.RawMessage) (string, error) {
-			var plan Plan
+			var plan types.Plan
 			if err := json.Unmarshal(args, &plan); err != nil {
 				return "", fmt.Errorf("计划解析失败: %w", err)
 			}
@@ -402,19 +405,19 @@ func (a *Agent) registerPlanTool() {
 }
 
 // setPlan 设置当前计划（创建副本，不修改原始数据）
-func (a *Agent) setPlan(plan Plan) {
-	steps := make([]Step, len(plan.Steps))
+func (a *Agent) setPlan(plan types.Plan) {
+	steps := make([]types.Step, len(plan.Steps))
 	for i, s := range plan.Steps {
-		steps[i] = Step{ID: i + 1, Description: s.Description, Status: "pending"}
+		steps[i] = types.Step{ID: i + 1, Description: s.Description, Status: "pending"}
 	}
-	a.currentPlan = &Plan{Goal: plan.Goal, Steps: steps}
+	a.currentPlan = &types.Plan{Goal: plan.Goal, Steps: steps}
 }
 
 // ─── 辅助函数 ──────────────────────────────────────────────────
 
 // GetHistory 获取对话历史的副本（用于调试，不影响内部状态）
-func (a *Agent) GetHistory() []Message {
-	out := make([]Message, len(a.history))
+func (a *Agent) GetHistory() []types.Message {
+	out := make([]types.Message, len(a.history))
 	copy(out, a.history)
 	return out
 }
@@ -445,8 +448,8 @@ func (a *Agent) SwitchSkill(name string) error {
 	a.currentSkill = name
 
 	// 更新 system prompt
-	a.history[0] = Message{
-		Role:    RoleSystem,
+	a.history[0] = types.Message{
+		Role:    types.RoleSystem,
 		Content: skill.SystemPrompt,
 	}
 
@@ -463,17 +466,17 @@ func (a *Agent) CurrentSkill() string {
 }
 
 // ListSkills 列出所有可用技能
-func (a *Agent) ListSkills() []Skill {
+func (a *Agent) ListSkills() []skills.Skill {
 	return a.skillReg.List()
 }
 
 // FormatSkillList 格式化技能列表
 func (a *Agent) FormatSkillList() string {
-	return FormatSkillList(a.skillReg.List(), a.currentSkill)
+	return skills.FormatSkillList(a.skillReg.List(), a.currentSkill)
 }
 
 // getSkillTools 根据当前技能获取可用工具定义
-func (a *Agent) getSkillTools() []ToolDefinition {
+func (a *Agent) getSkillTools() []types.ToolDefinition {
 	skill, ok := a.skillReg.Get(a.currentSkill)
 	if !ok || len(skill.Tools) == 0 {
 		// 未指定工具列表 → 使用全部工具
@@ -481,7 +484,7 @@ func (a *Agent) getSkillTools() []ToolDefinition {
 	}
 
 	// 按技能配置过滤工具
-	defs := make([]ToolDefinition, 0, len(skill.Tools))
+	defs := make([]types.ToolDefinition, 0, len(skill.Tools))
 	for _, name := range skill.Tools {
 		if tool, found := a.registry.Get(name); found {
 			defs = append(defs, tool.Definition)

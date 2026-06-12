@@ -14,6 +14,7 @@ import (
 	"strings"
 
 	"ai-agent-demo/agent"
+	"ai-agent-demo/agent/types"
 
 	"github.com/spf13/cobra"
 )
@@ -36,7 +37,7 @@ func runChat(cmd *cobra.Command, args []string) error {
 
 	llm := initLLMClient()
 	checkAPIConnection(llm)
-	config := agent.ConfigWithModel(model)
+	config := types.ConfigWithModel(model)
 	a := agent.NewAgent(llm, config)
 
 	reply, err := a.Run(userInput)

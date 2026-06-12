@@ -20,6 +20,7 @@ package agent
 //   → Agent 执行工具 → 把结果放回对话 → LLM 看到结果后继续推理
 
 import (
+	"ai-agent-demo/agent/types"
 	"bytes"
 	"encoding/json"
 	"fmt"
@@ -35,7 +36,7 @@ import (
 type LLMClient interface {
 	// Chat 发送消息列表，返回 LLM 的回复
 	// 如果 LLM 决定使用工具，回复中会包含 ToolCalls
-	Chat(messages []Message, tools []ToolDefinition) (*Message, error)
+	Chat(messages []types.Message, tools []types.ToolDefinition) (*types.Message, error)
 }
 
 // ─── OpenAI 兼容 API 客户端 ─────────────────────────────────────
@@ -87,7 +88,7 @@ func (c *OpenAIClient) Ping() error {
 // 请求流程：构建请求体 → 发 HTTP POST → 解析响应 → 返回 Message
 // 请求体包含：model（模型名）、messages（对话历史）、tools（工具定义）
 // 响应中的 message 可能包含 content（文本回复）或 tool_calls（工具调用请求）
-func (c *OpenAIClient) Chat(messages []Message, tools []ToolDefinition) (*Message, error) {
+func (c *OpenAIClient) Chat(messages []types.Message, tools []types.ToolDefinition) (*types.Message, error) {
 	// 1. 构建请求体：model + messages + tools
 	body := map[string]interface{}{
 		"model":    c.Model,
@@ -136,7 +137,7 @@ func (c *OpenAIClient) Chat(messages []Message, tools []ToolDefinition) (*Messag
 	//    如果 LLM 决定用工具，message 中会有 tool_calls 而不是 content
 	var apiResp struct {
 		Choices []struct {
-			Message Message `json:"message"`
+			Message types.Message `json:"message"`
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(respBody, &apiResp); err != nil {
@@ -169,7 +170,7 @@ func NewMockClient() *MockClient {
 //
 // 这演示了 Agent ReAct 循环的一个完整周期
 
-func (c *MockClient) Chat(messages []Message, tools []ToolDefinition) (*Message, error) {
+func (c *MockClient) Chat(messages []types.Message, tools []types.ToolDefinition) (*types.Message, error) {
 	c.callCount++
 
 	// 根据最后一条消息的角色判断当前处于 ReAct 循环的哪个阶段：
@@ -178,7 +179,7 @@ func (c *MockClient) Chat(messages []Message, tools []ToolDefinition) (*Message,
 	lastMsg := messages[len(messages)-1]
 
 	// 如果最后一条是工具结果（RoleTool），LLM 应该总结结果
-	if lastMsg.Role == RoleTool {
+	if lastMsg.Role == types.RoleTool {
 		return c.summarizeToolResult(messages)
 	}
 
@@ -194,54 +195,54 @@ func (c *MockClient) Chat(messages []Message, tools []ToolDefinition) (*Message,
 // mockToolCall 模拟 LLM 返回 tool_calls
 // 真实 LLM 会根据用户意图和工具描述自主决定调用哪个工具
 // Mock 模式按轮次依次调用不同工具，展示多种工具的效果
-func (c *MockClient) mockToolCall(tools []ToolDefinition) (*Message, error) {
-	var toolCall ToolCall
+func (c *MockClient) mockToolCall(tools []types.ToolDefinition) (*types.Message, error) {
+	var toolCall types.ToolCall
 
 	switch c.callCount {
 	case 1:
 		// 第一次：模拟调用 search 工具
-		toolCall = ToolCall{
+		toolCall = types.ToolCall{
 			ID:   fmt.Sprintf("call_%d", c.callCount),
 			Type: "function",
-			Function: FunctionCall{
+			Function: types.FunctionCall{
 				Name:      "search",
 				Arguments: `{"query": "AI Agent"}`,
 			},
 		}
 	case 2:
 		// 第二次：模拟调用 calculator
-		toolCall = ToolCall{
+		toolCall = types.ToolCall{
 			ID:   fmt.Sprintf("call_%d", c.callCount),
 			Type: "function",
-			Function: FunctionCall{
+			Function: types.FunctionCall{
 				Name:      "calculator",
 				Arguments: `{"expression": "42 * 3.14"}`,
 			},
 		}
 	case 3:
 		// 第三次：模拟调用 current_time
-		toolCall = ToolCall{
+		toolCall = types.ToolCall{
 			ID:   fmt.Sprintf("call_%d", c.callCount),
 			Type: "function",
-			Function: FunctionCall{
+			Function: types.FunctionCall{
 				Name:      "current_time",
 				Arguments: `{"timezone": "Asia/Shanghai"}`,
 			},
 		}
 	}
 
-	return &Message{
-		Role:      RoleAssistant,
+	return &types.Message{
+		Role:      types.RoleAssistant,
 		Content:   "",
-		ToolCalls: []ToolCall{toolCall},
+		ToolCalls: []types.ToolCall{toolCall},
 	}, nil
 }
 
-func (c *MockClient) mockTextReply(messages []Message) (*Message, error) {
+func (c *MockClient) mockTextReply(messages []types.Message) (*types.Message, error) {
 	// 从后向前找最后一条用户消息
 	userMsg := ""
 	for i := len(messages) - 1; i >= 0; i-- {
-		if messages[i].Role == RoleUser {
+		if messages[i].Role == types.RoleUser {
 			userMsg = messages[i].Content
 			break
 		}
@@ -256,21 +257,21 @@ func (c *MockClient) mockTextReply(messages []Message) (*Message, error) {
 	default:
 		reply = fmt.Sprintf("收到你的消息：「%s」\n\n这是一个 Mock 模式的回复。要体验真正的 AI Agent，请设置 API Key 后运行。", userMsg)
 	}
-	return &Message{
-		Role:    RoleAssistant,
+	return &types.Message{
+		Role:    types.RoleAssistant,
 		Content: reply,
 	}, nil
 }
 
-func (c *MockClient) summarizeToolResult(messages []Message) (*Message, error) {
+func (c *MockClient) summarizeToolResult(messages []types.Message) (*types.Message, error) {
 	// 调用方已确认最后一条是 RoleTool，直接取用
 	toolResult := messages[len(messages)-1].Content
 
 	// 简单的总结逻辑（教学用）
 	reply := fmt.Sprintf("根据工具返回的结果：\n\n%s\n\n以上是工具的原始输出。在真实 Agent 中，LLM 会用自然语言重新组织这些信息来回答用户。", toolResult)
 
-	return &Message{
-		Role:    RoleAssistant,
+	return &types.Message{
+		Role:    types.RoleAssistant,
 		Content: reply,
 	}, nil
 }

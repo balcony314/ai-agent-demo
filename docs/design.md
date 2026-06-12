@@ -45,7 +45,7 @@ graph TB
         LLM["LLMClient (llm.go)<br/>OpenAIClient / MockClient"]
         Tools["ToolRegistry (tools.go)<br/>calculator / current_time<br/>search / text_transform / create_plan"]
         Skills["SkillRegistry (skill.go)<br/>general / coder / translator<br/>analyst / storyteller"]
-        Types["types.go<br/>核心类型：Message, ToolCall, Plan, Config 等"]
+        Types["types/<br/>核心类型：Message, ToolCall, Plan, Config 等"]
 
         AgentCore --> LLM
         AgentCore --> Tools
@@ -97,7 +97,7 @@ Function Calling 是 LLM 与工具交互的协议：
 4. Agent 执行工具，把结果作为 `RoleTool` 消息放回对话
 5. LLM 看到工具结果后继续推理
 
-这就是 `agent/types.go` 中 `ToolDefinition`、`ToolCall`、`Message` 这些类型的用途。
+这就是 `agent/types/types.go` 中 `ToolDefinition`、`ToolCall`、`Message` 这些类型的用途。
 
 ### Skill 系统
 
@@ -109,9 +109,9 @@ Skill 是 Agent 的"人格切换"机制。每个 Skill 包含：
 
 ## 模块详解
 
-### types.go — 类型基础
+### types/ — 类型基础
 
-定义了整个 Agent 的数据结构：
+定义了整个 Agent 的数据结构（`agent/types/types.go`）：
 
 | 类型 | 用途 |
 |------|------|
@@ -256,13 +256,13 @@ Skill 不是 Agent 的子类，只是一组配置。好处：
 
 ### 添加新工具
 
-在 `agent/tools.go` 的 `RegisterBuiltinTools()` 中添加：
+在 `agent/tools/builtin.go` 的 `RegisterBuiltinTools()` 中添加：
 
 ```go
-registry.Register(Tool{
-    Definition: ToolDefinition{
+registry.Register(types.Tool{
+    Definition: types.ToolDefinition{
         Type: "function",
-        Function: FunctionSchema{
+        Function: types.FunctionSchema{
             Name:        "my_tool",
             Description: "工具描述（LLM 根据这个决定何时调用）",
             Parameters:  json.RawMessage(`{"type": "object", "properties": {...}}`),
@@ -277,7 +277,7 @@ registry.Register(Tool{
 
 ### 添加新技能
 
-在 `agent/skill.go` 的 `RegisterBuiltinSkills()` 中添加：
+在 `agent/skills/registry.go` 的 `RegisterBuiltinSkills()` 中添加：
 
 ```go
 registry.Register(Skill{
