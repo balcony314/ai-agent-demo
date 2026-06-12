@@ -50,6 +50,7 @@ cmd/
 agent/
   types.go        → 核心类型：Message, ToolCall, ToolDefinition, Config, LLMClient 接口 + ConfigWithModel
   tools.go        → ToolRegistry（map 实现）+ RegisterBuiltinTools() 注册 5 个内置工具
+  file_tools.go   → 8 个文件操作工具（读写、编辑、搜索等），路径安全验证
   skill.go        → SkillRegistry + RegisterBuiltinSkills() 注册 5 个内置技能
   llm.go          → OpenAIClient（Ping + /v1/chat/completions）+ MockClient（演示用）
   agent.go        → Agent 核心：Plan + ReAct 两阶段编排 + Skill 切换
@@ -77,6 +78,26 @@ agent/
 ## 添加新工具
 
 在 `agent/tools.go` 的 `RegisterBuiltinTools()` 中注册。提供带 JSON Schema 参数的 `ToolDefinition` 和一个 `Execute` 函数。LLM 根据 description 决定何时调用。
+
+## 文件操作工具
+
+8 个文件操作工具在 `agent/file_tools.go` 中实现，所有操作限制在当前工作目录内。
+
+内置文件工具：
+- `read_file` - 读取文件内容（最大 1MB）
+- `write_file` - 写入文件（创建/覆盖）
+- `edit_file` - 编辑文件（替换/追加/插入/删除）
+- `list_dir` - 列出目录内容
+- `file_info` - 获取文件信息
+- `delete_file` - 删除文件或目录
+- `search_files` - 按名称模式搜索文件
+- `search_content` - 按内容搜索（支持正则）
+
+安全机制：
+- `validatePath()` - 路径安全验证（禁止 `../`，限制在工作目录内）
+- `isTextFile()` - 仅支持文本文件
+- 文件大小限制（读取时最大 1MB）
+- 搜索结果数量限制（100/50 条）
 
 ## Skill 系统
 

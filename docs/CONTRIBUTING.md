@@ -92,6 +92,7 @@ ai-agent-demo/
 ├── agent/               # 核心逻辑
 │   ├── types.go         # 类型定义
 │   ├── tools.go         # 工具注册表
+│   ├── file_tools.go    # 文件操作工具（8个）
 │   ├── skill.go         # 技能注册表
 │   ├── llm.go           # LLM 客户端
 │   └── agent.go         # Plan + ReAct 两阶段编排
@@ -107,6 +108,15 @@ ai-agent-demo/
 1. 在 `agent/tools.go` 的 `RegisterBuiltinTools()` 中注册
 2. 提供 `ToolDefinition`（含 JSON Schema）和 `Execute` 函数
 3. 在 `agent/tools_test.go` 中添加测试
+
+### 添加文件操作工具
+
+文件操作工具在 `agent/file_tools.go` 中实现：
+
+1. 创建工厂函数（如 `newMyTool()`）返回 `Tool` 实例
+2. 在 `RegisterFileTools()` 中注册
+3. 使用 `validatePath()` 验证路径安全
+4. 在 `agent/file_tools_test.go` 中添加测试
 
 ### 添加技能
 

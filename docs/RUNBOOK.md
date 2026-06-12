@@ -168,6 +168,34 @@ echo "1.2.3.4 your-api-host.com" | sudo tee -a /etc/hosts
 - 查看工具实现代码
 - 验证 JSON Schema 定义
 
+### 7. 文件操作工具权限错误
+
+**症状**：
+```
+❌ 路径超出工作目录范围: /etc/passwd (工作目录: /home/user/project)
+```
+
+**原因**：文件操作工具限制在当前工作目录内，禁止路径遍历。
+
+**解决**：
+- 使用相对路径（如 `main.go` 而非 `/home/user/project/main.go`）
+- 确保路径不包含 `..`
+- 文件必须在工作目录内
+
+### 8. 文件操作工具类型错误
+
+**症状**：
+```
+❌ 不支持的文件类型，仅支持文本文件: image.png
+```
+
+**原因**：文件操作工具仅支持文本文件。
+
+**解决**：
+- 检查文件扩展名是否在支持列表中
+- 支持的类型：`.go`, `.py`, `.js`, `.ts`, `.json`, `.yaml`, `.md`, `.txt` 等
+- 不支持：`.png`, `.jpg`, `.exe`, `.zip` 等二进制文件
+
 ## 回滚
 
 ### Git 回滚
@@ -238,6 +266,13 @@ task build
 1. 在 `agent/tools.go` 注册
 2. 实现 `Execute` 函数
 3. 添加测试用例
+
+### 添加文件操作工具
+
+1. 在 `agent/file_tools.go` 创建工厂函数
+2. 在 `RegisterFileTools()` 注册
+3. 使用 `validatePath()` 验证路径
+4. 在 `agent/file_tools_test.go` 添加测试
 
 ### 添加新技能
 

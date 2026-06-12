@@ -64,6 +64,7 @@ ai-agent-demo/
 ├── agent/
 │   ├── types.go         # 核心类型：Message, ToolCall, ToolDefinition, Config, LLMClient 接口
 │   ├── tools.go         # 工具注册表 + 5 个内置工具
+│   ├── file_tools.go    # 8 个文件操作工具（读写、编辑、搜索等）
 │   ├── skill.go         # 技能注册表 + 5 个内置技能
 │   ├── llm.go           # LLM 客户端（OpenAI Ping + Chat / Mock）
 │   └── agent.go         # Plan + ReAct 两阶段编排 + 技能切换
@@ -107,6 +108,8 @@ ai-agent-demo/
 
 ## 🔧 内置工具
 
+### 通用工具
+
 | 名称 | 描述 | 示例触发 |
 |------|------|----------|
 | `search` | 模拟搜索引擎 | "帮我搜索 Go 并发编程" |
@@ -114,6 +117,21 @@ ai-agent-demo/
 | `current_time` | 获取当前日期时间 | "现在几点了？" |
 | `text_transform` | 文本处理（大小写/反转/长度） | "把 hello 转大写" |
 | `create_plan` | 为复杂任务创建执行计划 | "帮我分析 Go 和 Python 的区别" |
+
+### 文件操作工具
+
+| 名称 | 描述 | 示例触发 |
+|------|------|----------|
+| `read_file` | 读取文件内容（最大 1MB） | "读取 main.go 文件" |
+| `write_file` | 创建或覆盖文件 | "创建 hello.txt，内容为 Hello" |
+| `edit_file` | 编辑文件（替换/追加/插入/删除） | "把 main.go 中的 fmt 替换为 log" |
+| `list_dir` | 列出目录内容 | "列出当前目录的文件" |
+| `file_info` | 获取文件详细信息 | "查看 main.go 的文件信息" |
+| `delete_file` | 删除文件或目录 | "删除 temp.txt" |
+| `search_files` | 按文件名模式搜索 | "搜索所有 .go 文件" |
+| `search_content` | 按文件内容搜索（支持正则） | "搜索包含 main 函数的文件" |
+
+> **安全特性**：所有文件操作限制在当前工作目录内，禁止路径遍历（`../`），仅支持文本文件。
 
 ## 🎭 技能系统
 
@@ -166,6 +184,8 @@ registry.Register(Tool{
 })
 ```
 
+文件操作工具在 `agent/file_tools.go` 中实现，使用工厂函数模式（如 `newReadFileTool()`），并通过 `RegisterFileTools()` 集中注册。
+
 ### 扩展技能
 
 在 `agent/skill.go` 的 `RegisterBuiltinSkills()` 中添加新技能：
@@ -194,7 +214,7 @@ go tool cover -func=coverage.out
 # 生成 HTML 覆盖率报告
 go tool cover -html=coverage.out -o coverage.html
 
-# 当前覆盖率：96.5%（agent 包 97.8%）
+# 当前覆盖率：92.4%（agent 包）
 ```
 
 ## 🐛 常见问题
