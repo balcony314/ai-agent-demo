@@ -40,6 +40,9 @@ GOOS=darwin GOARCH=arm64 go build -o build/ai-agent-mac .
 |------|------|------|
 | `OPENAI_API_KEY` | OpenAI API Key | `sk-proj-xxx` |
 | `OPENAI_BASE_URL` | 自定义 API 地址 | `http://localhost:11434/v1` |
+| `EXEC_TIMEOUT` | 命令执行超时时间（秒） | `30` |
+| `EXEC_MAX_OUTPUT` | 命令输出最大字节数 | `1048576` |
+| `EXEC_AUDIT_LOG` | 审计日志文件路径 | `/var/log/ai-agent-audit.log` |
 
 ## 监控
 
@@ -196,6 +199,65 @@ echo "1.2.3.4 your-api-host.com" | sudo tee -a /etc/hosts
 - 支持的类型：`.go`, `.py`, `.js`, `.ts`, `.json`, `.yaml`, `.md`, `.txt` 等
 - 不支持：`.png`, `.jpg`, `.exe`, `.zip` 等二进制文件
 
+### 9. 命令执行被拒绝
+
+**症状**：
+```
+❌ 命令被拒绝: 禁止递归删除根目录
+```
+
+**原因**：命令执行工具有三层安全防护：
+1. 命令黑名单（阻止危险命令如 `rm -rf /`）
+2. 路径访问控制（限制访问系统关键路径）
+3. 敏感操作检测（需要用户确认）
+
+**解决**：
+- 检查命令是否在黑名单中
+- 避免访问受限路径（`/etc`, `/usr`, `/bin`, `/tmp` 等）
+- 对于敏感操作（如 `git push`, `rm`），设置 `confirm: true`
+
+### 10. 命令执行超时
+
+**症状**：
+```
+⏰ 命令执行超时
+命令: sleep 100
+耗时: 30s
+```
+
+**原因**：命令执行时间超过配置的超时时间。
+
+**解决**：
+- 增加超时时间：设置 `timeout` 参数（单位秒）
+- 或修改环境变量：`export EXEC_TIMEOUT=60`
+- 对于长时间运行的命令，使用 `background: true` 后台执行
+
+### 11. 命令输出被截断
+
+**症状**：
+```
+... [输出被截断，超过大小限制]
+```
+
+**原因**：命令输出超过最大限制（默认 1MB）。
+
+**解决**：
+- 增加输出限制：`export EXEC_MAX_OUTPUT=2097152`（2MB）
+- 或使用管道限制输出：`command | head -1000`
+- 对于大输出，考虑写入文件后读取
+
+### 12. 后台进程管理失效
+
+**症状**：
+- `manage_process list` 返回空
+- 无法找到后台启动的进程
+
+**原因**：进程管理使用单例模式，所有工具共享同一个 Executor。
+
+**解决**：
+- 确保 `execute_command` 和 `manage_process` 使用相同的工具实例
+- 后台进程会在 Agent 会话结束时自动清理
+
 ## 回滚
 
 ### Git 回滚
@@ -273,6 +335,14 @@ task build
 2. 在 `RegisterFileTools()` 注册
 3. 使用 `validatePath()` 验证路径
 4. 在 `agent/file_tools_test.go` 添加测试
+
+### 添加命令执行工具
+
+1. 核心逻辑放在 `agent/exec/` 包
+2. 工具注册在 `agent/exec_tools.go`
+3. 使用单例模式共享 Executor
+4. 实现三层安全防护
+5. 添加审计日志支持
 
 ### 添加新技能
 

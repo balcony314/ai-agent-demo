@@ -93,9 +93,16 @@ ai-agent-demo/
 │   ├── types.go         # 类型定义
 │   ├── tools.go         # 工具注册表
 │   ├── file_tools.go    # 文件操作工具（8个）
+│   ├── exec_tools.go    # 命令执行工具（2个）
 │   ├── skill.go         # 技能注册表
 │   ├── llm.go           # LLM 客户端
-│   └── agent.go         # Plan + ReAct 两阶段编排
+│   ├── agent.go         # Plan + ReAct 两阶段编排
+│   └── exec/            # 命令执行核心逻辑
+│       ├── config.go    # 执行配置
+│       ├── security.go  # 安全防护
+│       ├── executor.go  # 命令执行器
+│       ├── audit.go     # 审计日志
+│       └── process.go   # 进程管理
 ├── docs/                # 文档
 ├── Taskfile.yml         # 构建配置
 └── build/               # 编译输出
@@ -117,6 +124,21 @@ ai-agent-demo/
 2. 在 `RegisterFileTools()` 中注册
 3. 使用 `validatePath()` 验证路径安全
 4. 在 `agent/file_tools_test.go` 中添加测试
+
+### 添加命令执行工具
+
+命令执行工具在 `agent/exec_tools.go` 和 `agent/exec/` 包中实现：
+
+1. 核心逻辑在 `agent/exec/` 包中（独立于 agent 包，便于测试）
+2. 工具注册在 `agent/exec_tools.go` 中（桥接 exec 包到 ToolRegistry）
+3. 使用单例模式共享 Executor 实例
+4. 安全防护：命令黑名单、路径访问控制、敏感操作检测
+5. 在 `agent/exec_tools_test.go` 和 `agent/exec/*_test.go` 中添加测试
+
+环境变量配置：
+- `EXEC_TIMEOUT` - 命令超时时间（秒，默认 30）
+- `EXEC_MAX_OUTPUT` - 最大输出字节数，默认 1MB
+- `EXEC_AUDIT_LOG` - 审计日志文件路径
 
 ### 添加技能
 

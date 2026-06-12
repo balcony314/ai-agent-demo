@@ -334,10 +334,10 @@ func TestAgentGetSkillTools_AllTools(t *testing.T) {
 	client := &scriptedClient{}
 	agent := NewAgent(client, DefaultConfig())
 
-	// general 技能：使用全部工具（calculator, current_time, search, text_transform, create_plan, 8个文件工具）
+	// general 技能：使用全部工具（calculator, current_time, search, text_transform, create_plan, 8个文件工具, 2个执行工具）
 	defs := agent.getSkillTools()
-	if len(defs) != 13 {
-		t.Errorf("general 技能工具数 = %d, 期望 13", len(defs))
+	if len(defs) != 15 {
+		t.Errorf("general 技能工具数 = %d, 期望 15", len(defs))
 	}
 }
 

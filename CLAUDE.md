@@ -99,6 +99,41 @@ agent/
 - 文件大小限制（读取时最大 1MB）
 - 搜索结果数量限制（100/50 条）
 
+## 命令执行工具
+
+2 个命令执行工具在 `agent/exec_tools.go` 中实现，核心逻辑在 `agent/exec/` 包中。
+
+内置执行工具：
+- `execute_command` - 执行 shell 命令（支持同步/后台执行）
+- `manage_process` - 管理后台进程（list/status/kill）
+
+安全防护（三层机制）：
+1. **命令黑名单** - 阻止危险命令（rm -rf /、dd、mkfs、shutdown 等）
+2. **路径访问控制** - 限制访问系统关键路径（/etc、/usr、/bin 等）
+3. **敏感操作检测** - 需要用户确认（git push、rm、chmod 等）
+
+特性：
+- 超时控制（默认 30 秒，可通过 EXEC_TIMEOUT 环境变量配置）
+- 输出限制（默认 1MB，可通过 EXEC_MAX_OUTPUT 配置）
+- 实时进度反馈（每 5 秒报告执行状态）
+- 审计日志（通过 EXEC_AUDIT_LOG 配置日志路径）
+- 错误分析（自动分析退出码和错误信息，提供修复建议）
+
+配置环境变量：
+- `EXEC_TIMEOUT` - 命令超时时间（秒）
+- `EXEC_MAX_OUTPUT` - 最大输出字节数
+- `EXEC_AUDIT_LOG` - 审计日志文件路径
+
+代码结构：
+```
+agent/exec/
+  config.go      - 执行配置（环境变量读取、默认值）
+  security.go    - 安全防护模块（黑名单、路径控制、敏感操作检测）
+  executor.go    - 命令执行核心（同步/异步、超时、输出捕获）
+  audit.go       - 审计日志模块
+  process.go     - 后台进程管理
+```
+
 ## Skill 系统
 
 Skill 是预定义的 Agent 角色配置，可让同一个 Agent 切换不同"人格"。
